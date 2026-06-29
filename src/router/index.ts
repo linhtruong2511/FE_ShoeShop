@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import type { RouteRecordRaw } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
+import { useAuthStore } from '../stores/auth';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -31,11 +32,23 @@ const routes: RouteRecordRaw[] = [
         path: 'orders',
         name: 'OrderHistory',
         component: () => import('../views/OrderHistoryView.vue'),
+        meta: { requiresCustomerAuth: true }
       },
       {
         path: 'orders/:id',
         name: 'OrderDetail',
         component: () => import('../views/OrderDetailView.vue'),
+        meta: { requiresCustomerAuth: true }
+      },
+      {
+        path: 'login',
+        name: 'Login',
+        component: () => import('../views/LoginView.vue'),
+      },
+      {
+        path: 'register',
+        name: 'Register',
+        component: () => import('../views/RegisterView.vue'),
       },
     ]
   },
@@ -47,22 +60,26 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'dashboard',
         name: 'AdminDashboard',
-        component: () => import('../views/admin/AdminDashboardView.vue')
+        component: () => import('../views/admin/AdminDashboardView.vue'),
+        meta: { requiresStaffAuth: true }
       },
       {
         path: 'products',
         name: 'AdminProducts',
-        component: () => import('../views/admin/AdminProductListView.vue')
+        component: () => import('../views/admin/AdminProductListView.vue'),
+        meta: { requiresStaffAuth: true, requiresAdmin: true }
       },
       {
         path: 'orders',
         name: 'AdminOrders',
-        component: () => import('../views/admin/AdminOrderListView.vue')
+        component: () => import('../views/admin/AdminOrderListView.vue'),
+        meta: { requiresStaffAuth: true }
       },
       {
         path: 'vouchers',
         name: 'AdminVouchers',
-        component: () => import('../views/admin/AdminVoucherListView.vue')
+        component: () => import('../views/admin/AdminVoucherListView.vue'),
+        meta: { requiresStaffAuth: true, requiresAdmin: true }
       }
     ]
   }
@@ -80,4 +97,25 @@ const router = createRouter({
   },
 });
 
+router.beforeEach((to, _from, next) => {
+  const authStore = useAuthStore();
+
+  // Check customer auth
+  if (to.matched.some(record => record.meta.requiresCustomerAuth) && !authStore.isCustomer) {
+    return next({ path: '/login', query: { redirect: to.fullPath } });
+  }
+
+  // Check admin/staff auth
+  if (to.matched.some(record => record.meta.requiresStaffAuth) && !authStore.isStaff) {
+    return next({ path: '/login' }); // or separate admin login if needed
+  }
+
+  if (to.matched.some(record => record.meta.requiresAdmin) && !authStore.isAdmin) {
+    return next({ path: '/admin/dashboard' });
+  }
+
+  next();
+});
+
 export default router;
+

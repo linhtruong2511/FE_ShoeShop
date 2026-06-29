@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { mockProducts } from '../mocks/products';
 import ProductCard from '../components/common/ProductCard.vue';
+import { productService } from '../services/product.service';
+import { brandService } from '../services/brand.service';
+import type { ProductListItem } from '../types';
 
 const router = useRouter();
 
@@ -14,7 +16,7 @@ const slides = [
     subtitle: 'BỘ SƯU TẬP AIR JORDAN CỰC CHẤT',
     description: 'Sở hữu ngay các phối màu Chicago huyền thoại cùng chất liệu cao cấp nhất.',
     image: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?q=80&w=1200&auto=format&fit=crop',
-    link: '/product/jordan-1-low',
+    link: '/product/1',
     bgClass: 'bg-gradient-to-r from-red-950 via-slate-900 to-black',
     accentText: 'text-red-500'
   },
@@ -23,7 +25,7 @@ const slides = [
     subtitle: 'ADIDAS SUPERSTAR MŨI SÒ',
     description: 'Biểu tượng đường phố tồn tại mãi với thời gian. Khuyến mãi lên đến 20% hôm nay.',
     image: 'https://images.unsplash.com/photo-1539185441755-769473a23570?q=80&w=1200&auto=format&fit=crop',
-    link: '/product/adidas-superstar',
+    link: '/product/2',
     bgClass: 'bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900',
     accentText: 'text-blue-400'
   }
@@ -45,27 +47,60 @@ onUnmounted(() => {
   if (slideInterval) clearInterval(slideInterval);
 });
 
-// Brand Cards Data
-const brands = [
-  { name: 'Nike', count: '120+ mẫu', bg: 'bg-slate-100', logo: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=300&auto=format&fit=crop' },
-  { name: 'Adidas', count: '90+ mẫu', bg: 'bg-slate-100', logo: 'https://images.unsplash.com/photo-1539185441755-769473a23570?q=80&w=300&auto=format&fit=crop' },
-  { name: 'Puma', count: '60+ mẫu', bg: 'bg-slate-100', logo: 'https://images.unsplash.com/photo-1608231387042-66d1773070a5?q=80&w=300&auto=format&fit=crop' },
-  { name: 'Jordan', count: '40+ mẫu', bg: 'bg-slate-100', logo: 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?q=80&w=300&auto=format&fit=crop' }
-];
-
-const navigateToBrand = (brandName: string) => {
-  router.push(`/products?brand=${brandName}`);
+// Brand navigation helper
+const navigateToBrand = (brandId: number) => {
+  router.push(`/products?brand=${brandId}`);
 };
+
+// API States
+const hotProducts = ref<ProductListItem[]>([]);
+const newProducts = ref<ProductListItem[]>([]);
+const brandsList = ref<any[]>([]);
+
+const isLoadingProducts = ref(false);
+const isLoadingBrands = ref(false);
+const errorMsg = ref<string | null>(null);
 
 // Active Tab State for Promoted Products
 const activeTab = ref<'hot' | 'new'>('hot');
 
-const filteredHotProducts = computed(() => {
-  return mockProducts.filter(p => p.isHot).slice(0, 4);
-});
+const getBrandLogo = (brand: any) => {
+  if (brand.logo_url) return brand.logo_url;
+  const defaults: Record<string, string> = {
+    'Nike': 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=300&auto=format&fit=crop',
+    'Adidas': 'https://images.unsplash.com/photo-1539185441755-769473a23570?q=80&w=300&auto=format&fit=crop',
+    'Puma': 'https://images.unsplash.com/photo-1608231387042-66d1773070a5?q=80&w=300&auto=format&fit=crop',
+    'Jordan': 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?q=80&w=300&auto=format&fit=crop'
+  };
+  return defaults[brand.brand_name] || 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?q=80&w=300&auto=format&fit=crop';
+};
 
-const filteredNewProducts = computed(() => {
-  return mockProducts.filter(p => p.isNew).slice(0, 4);
+const fetchHomeData = async () => {
+  isLoadingProducts.value = true;
+  isLoadingBrands.value = true;
+  errorMsg.value = null;
+
+  try {
+    const [hotRes, newRes, brandsRes] = await Promise.all([
+      productService.getProducts({ sort_by: 'sold_quantity', sort_order: 'desc', limit: 8 }),
+      productService.getProducts({ sort_by: 'created_at', sort_order: 'desc', limit: 8 }),
+      brandService.getBrands(0, 100)
+    ]);
+
+    hotProducts.value = hotRes.data || [];
+    newProducts.value = newRes.data || [];
+    brandsList.value = brandsRes.data || [];
+  } catch (err: any) {
+    console.error('Error fetching home data:', err);
+    errorMsg.value = 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối mạng.';
+  } finally {
+    isLoadingProducts.value = false;
+    isLoadingBrands.value = false;
+  }
+};
+
+onMounted(() => {
+  fetchHomeData();
 });
 </script>
 
@@ -117,7 +152,7 @@ const filteredNewProducts = computed(() => {
           <!-- Featured Image (hidden on small screens) -->
           <div class="hidden lg:block h-[450px] relative">
             <img 
-              :src="slide.image" 
+              :src="slide.image || '/placeholder_image.png'" 
               :alt="slide.title" 
               class="w-full h-full object-cover rounded-2xl shadow-2xl border-4 border-white/10"
             />
@@ -205,22 +240,30 @@ const filteredNewProducts = computed(() => {
         <p class="text-slate-500 text-sm mt-3">MyShoes cung cấp giày thể thao nguyên hộp từ những thương hiệu hàng đầu thế giới.</p>
       </div>
 
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+      <div v-if="isLoadingBrands" class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+        <div v-for="n in 4" :key="n" class="border border-slate-100 rounded-2xl p-6 flex flex-col items-center justify-center space-y-4 animate-pulse bg-white">
+          <div class="w-24 h-24 rounded-full bg-slate-200"></div>
+          <div class="h-4 bg-slate-200 rounded w-1/2 mx-auto"></div>
+          <div class="h-3 bg-slate-200 rounded w-3/4 mx-auto"></div>
+        </div>
+      </div>
+
+      <div v-else class="grid grid-cols-2 lg:grid-cols-4 gap-6">
         <div 
-          v-for="brand in brands" 
-          :key="brand.name"
-          @click="navigateToBrand(brand.name)"
+          v-for="brand in brandsList" 
+          :key="brand.brand_id"
+          @click="navigateToBrand(brand.brand_id)"
           class="group relative bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-premium hover:shadow-premium-hover transition-all duration-300 p-6 flex flex-col items-center justify-center text-center cursor-pointer"
         >
           <div class="w-24 h-24 rounded-full overflow-hidden bg-slate-50 mb-4 border border-slate-100 flex items-center justify-center">
             <img 
-              :src="brand.logo" 
-              :alt="brand.name" 
+              :src="getBrandLogo(brand) || '/placeholder_image.png'" 
+              :alt="brand.brand_name" 
               class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
             />
           </div>
-          <h3 class="text-lg font-bold text-slate-800 group-hover:text-brand-blue transition-colors font-sans">{{ brand.name }}</h3>
-          <p class="text-xs text-slate-400 mt-1">{{ brand.count }}</p>
+          <h3 class="text-lg font-bold text-slate-800 group-hover:text-brand-blue transition-colors font-sans">{{ brand.brand_name }}</h3>
+          <p class="text-xs text-slate-400 mt-1">{{ brand.description || 'Thương hiệu chính hãng' }}</p>
           
           <div class="mt-4 text-xs font-semibold text-brand-blue group-hover:text-brand-accent transition-colors flex items-center space-x-1">
             <span>Khám phá ngay</span>
@@ -259,17 +302,37 @@ const filteredNewProducts = computed(() => {
         </div>
       </div>
 
-      <transition name="fade" mode="out-in">
+      <!-- Error State Banner -->
+      <div v-if="errorMsg" class="bg-red-50 border border-red-100 rounded-2xl p-6 text-center max-w-2xl mx-auto my-6">
+        <p class="text-red-800 text-sm font-semibold mb-3">{{ errorMsg }}</p>
+        <button 
+          @click="fetchHomeData" 
+          class="bg-brand-accent hover:bg-brand-accentHover text-white px-6 py-2 rounded-full text-xs font-bold transition-all shadow"
+        >
+          Thử lại
+        </button>
+      </div>
+
+      <div v-else-if="isLoadingProducts" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <div v-for="n in 4" :key="n" class="border border-slate-100 rounded-2xl p-5 space-y-4 animate-pulse bg-white">
+          <div class="aspect-square bg-slate-200 rounded-xl"></div>
+          <div class="h-4 bg-slate-200 rounded w-1/3"></div>
+          <div class="h-5 bg-slate-200 rounded w-3/4"></div>
+          <div class="h-4 bg-slate-200 rounded w-1/2"></div>
+        </div>
+      </div>
+
+      <transition v-else name="fade" mode="out-in">
         <div v-if="activeTab === 'hot'" key="hot" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           <ProductCard 
-            v-for="product in filteredHotProducts" 
+            v-for="product in hotProducts" 
             :key="product.product_id" 
             :product="product" 
           />
         </div>
         <div v-else key="new" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           <ProductCard 
-            v-for="product in filteredNewProducts" 
+            v-for="product in newProducts" 
             :key="product.product_id" 
             :product="product" 
           />

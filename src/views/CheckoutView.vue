@@ -2,20 +2,12 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useCartStore, getDiscountedPrice } from '../stores/cart';
-import { mockVouchers } from '../mocks/products';
-import type { Order, OrderDetail } from '../types';
+import { orderService } from '../services/order.service';
 
 const router = useRouter();
 const cartStore = useCartStore();
 
-onMounted(() => {
-  cartStore.loadCart();
-  if (cartStore.items.length === 0) {
-    router.push('/products');
-  }
-});
-
-// Form inputs
+const isLoadingOrder = ref(false);
 const receiverName = ref('');
 const receiverPhone = ref('');
 const shippingAddress = ref('');
@@ -28,45 +20,46 @@ const voucherError = ref('');
 const voucherSuccess = ref('');
 const orderError = ref('');
 
+onMounted(async () => {
+  await cartStore.loadCart();
+  if (cartStore.items.length === 0) {
+    router.push('/products');
+  }
+});
+
 const formatPrice = (value: number) => {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
 };
 
-// Calculate shipping fee
+// Calculate shipping fee from preview
 const shippingFee = computed(() => {
-  if (cartStore.appliedVoucher?.voucher_type === 'free_shipping') return 0;
-  return shippingMethod.value === 'standard' ? 30000 : 50000;
+  return cartStore.checkoutPreviewData?.shipping_fee ?? 30000;
 });
 
-// Calculate final total
+// Calculate final total from preview
 const totalAmount = computed(() => {
-  const discount = cartStore.voucherDiscount;
-  const netSubtotal = cartStore.subtotal - discount;
-  return Math.max(0, netSubtotal + shippingFee.value);
+  return cartStore.checkoutPreviewData?.total ?? (cartStore.subtotal + shippingFee.value);
 });
 
 // Available vouchers to apply (display to user for convenience)
 const availableVouchers = computed(() => {
-  return mockVouchers.filter(v => v.status === 'active' && cartStore.subtotal >= v.min_order_amount);
+  return [
+    { voucher_id: 1, code: 'SALE10', voucher_type: 'percent', discount_value: 10, min_order_amount: 100000, description: 'Giảm 10% đơn từ 100k' },
+    { voucher_id: 2, code: 'FREESHIP', voucher_type: 'free_shipping', discount_value: 30000, min_order_amount: 0, description: 'Miễn phí vận chuyển' }
+  ];
 });
 
 // Apply voucher logic
-const handleApplyVoucher = (code: string) => {
+const handleApplyVoucher = async (code: string) => {
   voucherError.value = '';
   voucherSuccess.value = '';
   
-  const voucher = mockVouchers.find(v => v.code.toUpperCase() === code.trim().toUpperCase());
-  if (!voucher) {
-    voucherError.value = 'Mã giảm giá không tồn tại!';
+  if (!code.trim()) {
+    voucherError.value = 'Vui lòng nhập mã giảm giá!';
     return;
   }
   
-  if (voucher.status !== 'active') {
-    voucherError.value = 'Mã giảm giá đã hết hiệu lực!';
-    return;
-  }
-  
-  const result = cartStore.applyVoucher(voucher);
+  const result = await cartStore.applyVoucher(code.trim());
   if (result.success) {
     voucherSuccess.value = result.message;
     voucherInput.value = '';
@@ -75,14 +68,14 @@ const handleApplyVoucher = (code: string) => {
   }
 };
 
-const handleRemoveVoucher = () => {
-  cartStore.removeVoucher();
+const handleRemoveVoucher = async () => {
+  await cartStore.removeVoucher();
   voucherSuccess.value = '';
   voucherError.value = '';
 };
 
 // Confirm order
-const handlePlaceOrder = () => {
+const handlePlaceOrder = async () => {
   orderError.value = '';
   
   if (!receiverName.value.trim()) {
@@ -98,90 +91,40 @@ const handlePlaceOrder = () => {
     return;
   }
 
-  // 1. Double check stock in mock database
-  for (const item of cartStore.items) {
-    if (item.selectedSku.stock_quantity < item.quantity) {
-      orderError.value = `Sản phẩm ${item.product.product_name} (Size ${item.selectedSku.size}) chỉ còn ${item.selectedSku.stock_quantity} sản phẩm trong kho. Vui lòng cập nhật lại giỏ hàng!`;
-      return;
-    }
+  // Vietnamese phone regex
+  const phoneRegex = /^0[0-9]{9}$/;
+  if (!phoneRegex.test(receiverPhone.value.trim())) {
+    orderError.value = 'Số điện thoại không hợp lệ (phải có 10 chữ số và bắt đầu bằng số 0)!';
+    return;
   }
 
-  // 2. Process stock deduction (simulated in localStorage or mockProducts)
-  cartStore.items.forEach(item => {
-    item.selectedSku.stock_quantity -= item.quantity;
-  });
-
-  // 3. Create the order
-  const orderId = 'ord-' + Date.now();
-  const orderCode = 'ORD-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + Math.floor(1000 + Math.random() * 9000);
+  isLoadingOrder.value = true;
   
-  const orderDetails: OrderDetail[] = cartStore.items.map((item, index) => {
-    const discountedPrice = getDiscountedPrice(item.selectedColor);
-    return {
-      order_detail_id: `od-${orderId}-${index}`,
-      order_id: orderId,
-      sku_id: item.selectedSku.sku_id,
-      sku_code_snapshot: item.selectedSku.sku_code,
-      product_name_snapshot: item.product.product_name,
-      color_name_snapshot: item.selectedColor.color_name,
-      size_snapshot: item.selectedSku.size,
-      image_url_snapshot: item.selectedColor.images.find(img => img.is_main)?.image_url || item.selectedColor.images[0]?.image_url,
-      quantity: item.quantity,
-      unit_price: item.selectedColor.price,
-      discount_type_snapshot: item.selectedColor.discount_type,
-      discount_value_snapshot: item.selectedColor.discount_value,
-      discounted_price: discountedPrice,
-      line_total: discountedPrice * item.quantity
+  try {
+    const orderData = {
+      receiver_name: receiverName.value.trim(),
+      receiver_phone: receiverPhone.value.trim(),
+      shipping_address: shippingAddress.value.trim(),
+      note: note.value.trim() || undefined,
+      payment_method: paymentMethod.value,
+      voucher_code: cartStore.appliedVoucherCode || undefined,
     };
-  });
 
-  const newOrder: Order = {
-    order_id: orderId,
-    order_code: orderCode,
-    receiver_name: receiverName.value,
-    receiver_phone: receiverPhone.value,
-    shipping_address: shippingAddress.value,
-    note: note.value,
-    payment_method: paymentMethod.value,
-    payment_status: paymentMethod.value === 'bank_transfer' ? 'pending' : 'pending',
-    voucher_id: cartStore.appliedVoucher?.voucher_id,
-    voucher_code_snapshot: cartStore.appliedVoucher?.code,
-    subtotal_amount: cartStore.subtotal,
-    voucher_discount_amount: cartStore.voucherDiscount,
-    shipping_fee: shippingFee.value,
-    total_amount: totalAmount.value,
-    order_status: 'pending',
-    created_at: new Date().toISOString(),
-    items: orderDetails,
-    status_history: [
-      {
-        status_log_id: `log-${orderId}-0`,
-        order_id: orderId,
-        new_status: 'pending',
-        note: 'Đơn hàng được khởi tạo thành công.',
-        changed_at: new Date().toISOString()
-      }
-    ]
-  };
-
-  // 4. Save to localStorage orders list
-  const existingOrdersStr = localStorage.getItem('myshoes_orders');
-  const existingOrders: Order[] = existingOrdersStr ? JSON.parse(existingOrdersStr) : [];
-  existingOrders.unshift(newOrder);
-  localStorage.setItem('myshoes_orders', JSON.stringify(existingOrders));
-
-  // 5. If voucher was used, record usage (simulate)
-  if (cartStore.appliedVoucher) {
-    const voucher = mockVouchers.find(v => v.voucher_id === cartStore.appliedVoucher?.voucher_id);
-    if (voucher) {
-      voucher.used_count += 1;
+    const res = await orderService.createOrder(orderData);
+    if (res.success && res.data) {
+      const order = res.data;
+      await cartStore.clearCart();
+      alert('Đặt hàng thành công! Cám ơn bạn đã lựa chọn ShoeShop.');
+      router.push(`/orders/${order.order_id}`);
+    } else {
+      orderError.value = res.message || 'Có lỗi xảy ra khi tạo đơn hàng.';
     }
+  } catch (err: any) {
+    console.error('Create order error:', err);
+    orderError.value = err.response?.data?.detail || 'Không thể tạo đơn hàng. Vui lòng kiểm tra lại thông tin hoặc tồn kho sản phẩm.';
+  } finally {
+    isLoadingOrder.value = false;
   }
-
-  // 6. Clear cart & redirect
-  cartStore.clearCart();
-  alert('Đặt hàng thành công! Cám ơn bạn đã lựa chọn ShoeShop.');
-  router.push(`/orders/${orderId}`);
 };
 </script>
 
@@ -348,7 +291,7 @@ const handlePlaceOrder = () => {
             <li v-for="item in cartStore.items" :key="item.id" class="flex py-3.5 items-center justify-between">
               <div class="flex items-center space-x-3 text-left">
                 <img 
-                  :src="item.selectedColor.images.find(img => img.is_main)?.image_url || item.selectedColor.images[0]?.image_url" 
+                  :src="(item.selectedColor as any).images?.find((img: any) => img.is_main)?.image_url || (item.selectedColor as any).images?.[0]?.image_url || (item.selectedColor as any).main_image_url || '/placeholder_image.png'" 
                   :alt="item.product.product_name"
                   class="h-12 w-12 rounded-lg object-cover bg-slate-50 border border-slate-100 flex-shrink-0"
                 />
@@ -402,12 +345,12 @@ const handlePlaceOrder = () => {
           </div>
 
           <!-- Voucher snap badge -->
-          <div v-if="cartStore.appliedVoucher" class="bg-emerald-50 border border-emerald-100 text-emerald-800 p-3 rounded-2xl flex items-center justify-between text-xs font-bold mb-6">
+          <div v-if="cartStore.appliedVoucherCode" class="bg-emerald-50 border border-emerald-100 text-emerald-800 p-3 rounded-2xl flex items-center justify-between text-xs font-bold mb-6">
             <span class="flex items-center">
               <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </svg>
-              ĐANG ÁP DỤNG: {{ cartStore.appliedVoucher.code }}
+              ĐANG ÁP DỤNG: {{ cartStore.appliedVoucherCode }}
             </span>
             <button @click="handleRemoveVoucher" class="text-slate-400 hover:text-brand-accent">Hủy</button>
           </div>
@@ -435,9 +378,10 @@ const handlePlaceOrder = () => {
           <div class="mt-8">
             <button 
               @click="handlePlaceOrder"
-              class="w-full bg-brand-accent hover:bg-brand-accentHover text-white py-4 rounded-full font-black tracking-wide text-base shadow-lg transition-all duration-300 transform hover:-translate-y-0.5"
+              :disabled="isLoadingOrder"
+              class="w-full bg-brand-accent hover:bg-brand-accentHover text-white py-4 rounded-full font-black tracking-wide text-base shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
-              HOÀN TẤT ĐẶT HÀNG
+              {{ isLoadingOrder ? 'ĐANG XỬ LÝ ĐƠN HÀNG...' : 'HOÀN TẤT ĐẶT HÀNG' }}
             </button>
             <p v-if="orderError" class="text-brand-accent text-xs font-bold mt-3 text-center">{{ orderError }}</p>
           </div>

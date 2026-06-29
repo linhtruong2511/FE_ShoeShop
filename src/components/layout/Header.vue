@@ -2,20 +2,31 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useCartStore, getDiscountedPrice } from '../../stores/cart';
+import { useAuthStore } from '../../stores/auth';
 import { mockProducts } from '../../mocks/products';
 import CartDrawer from './CartDrawer.vue';
 
 const router = useRouter();
 const cartStore = useCartStore();
+const authStore = useAuthStore();
 
 const searchQuery = ref('');
 const isCartOpen = ref(false);
 const isMobileMenuOpen = ref(false);
 const isMobileProductsOpen = ref(false);
 const searchResultsRef = ref<HTMLElement | null>(null);
+const userMenuRef = ref<HTMLElement | null>(null);
 const showSearchResults = ref(false);
+const isUserMenuOpen = ref(false);
 
 const totalItems = computed(() => cartStore.totalItems);
+
+const handleLogout = () => {
+  authStore.logout();
+  isUserMenuOpen.value = false;
+  isMobileMenuOpen.value = false;
+  router.push('/login');
+};
 
 const filteredProducts = computed(() => {
   const query = searchQuery.value.trim().toLowerCase();
@@ -41,7 +52,7 @@ const handleSearchInput = () => {
   showSearchResults.value = searchQuery.value.trim().length >= 2;
 };
 
-const selectProduct = (productId: string) => {
+const selectProduct = (productId: number | string) => {
   router.push(`/product/${productId}`);
   searchQuery.value = '';
   showSearchResults.value = false;
@@ -66,6 +77,9 @@ const toggleCart = () => {
 const clickOutside = (event: MouseEvent) => {
   if (searchResultsRef.value && !searchResultsRef.value.contains(event.target as Node)) {
     showSearchResults.value = false;
+  }
+  if (userMenuRef.value && !userMenuRef.value.contains(event.target as Node)) {
+    isUserMenuOpen.value = false;
   }
 };
 
@@ -154,7 +168,7 @@ onUnmounted(() => {
                   @click="selectProduct(product.product_id)"
                   class="flex items-center space-x-3 px-4 py-2.5 hover:bg-slate-50 cursor-pointer transition-colors"
                 >
-                  <img :src="getDisplayImage(product)" :alt="product.product_name" class="w-10 h-10 object-cover rounded-md" />
+                  <img :src="getDisplayImage(product) || '/placeholder_image.png'" :alt="product.product_name" class="w-10 h-10 object-cover rounded-md" />
                   <div class="flex-1 min-w-0 text-left">
                     <p class="text-xs font-bold text-slate-900 truncate">{{ product.product_name }}</p>
                     <p class="text-[10px] text-slate-400">{{ product.brand_name }}</p>
@@ -187,6 +201,57 @@ onUnmounted(() => {
               {{ totalItems }}
             </span>
           </button>
+
+          <!-- User Actions (Desktop) -->
+          <div v-if="authStore.isLoggedIn" ref="userMenuRef" class="relative hidden lg:block">
+            <button 
+              @click="isUserMenuOpen = !isUserMenuOpen"
+              class="flex items-center space-x-2 text-slate-300 hover:text-white transition-colors focus:outline-none py-1.5 px-3 rounded-full hover:bg-slate-900 border border-transparent hover:border-slate-800 text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              <svg class="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <span>{{ authStore.user?.full_name?.split(' ').pop() || 'Tài khoản' }}</span>
+            </button>
+            <div 
+              v-if="isUserMenuOpen" 
+              class="absolute right-0 mt-2 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl z-50 overflow-hidden py-1 text-left"
+            >
+              <div class="px-4 py-2 border-b border-slate-800">
+                <p class="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Tài khoản</p>
+                <p class="text-xs font-bold text-white truncate">{{ authStore.user?.full_name }}</p>
+              </div>
+              <router-link 
+                to="/orders" 
+                @click="isUserMenuOpen = false" 
+                class="block px-4 py-2.5 text-[10px] text-slate-300 hover:bg-slate-800 hover:text-white transition-colors duration-150 font-bold uppercase tracking-wider"
+              >
+                Đơn hàng của tôi
+              </router-link>
+              <div class="h-px bg-slate-800 my-1"></div>
+              <button 
+                @click="handleLogout" 
+                class="w-full text-left px-4 py-2.5 text-[10px] text-rose-400 hover:bg-slate-800 hover:text-rose-300 transition-colors duration-150 font-bold uppercase tracking-wider cursor-pointer"
+              >
+                Đăng xuất
+              </button>
+            </div>
+          </div>
+          
+          <div v-else class="hidden lg:flex items-center space-x-2">
+            <router-link 
+              to="/login" 
+              class="text-[11px] font-bold text-slate-300 hover:text-white px-3 py-1.5 transition-colors uppercase tracking-wider"
+            >
+              Đăng nhập
+            </router-link>
+            <router-link 
+              to="/register" 
+              class="text-[11px] font-bold text-white bg-brand-accent hover:bg-brand-accentHover px-4 py-2 rounded-full transition-all duration-300 shadow hover:shadow-md uppercase tracking-wider"
+            >
+              Đăng ký
+            </router-link>
+          </div>
 
           <!-- Mobile Menu Button -->
           <button 
@@ -294,6 +359,37 @@ onUnmounted(() => {
         >
           Quản trị
         </router-link>
+
+        <!-- User Actions (Mobile) -->
+        <div class="border-t border-slate-900 mt-4 pt-4 pb-2 px-3">
+          <div v-if="authStore.isLoggedIn" class="space-y-2">
+            <div class="text-xs text-slate-400 font-bold uppercase tracking-wider">
+              Tài khoản: <span class="text-white">{{ authStore.user?.full_name }}</span>
+            </div>
+            <button 
+              @click="handleLogout" 
+              class="w-full text-left py-2.5 rounded-md text-base font-medium text-rose-400 hover:bg-slate-900 transition-colors uppercase tracking-wider cursor-pointer"
+            >
+              Đăng xuất
+            </button>
+          </div>
+          <div v-else class="flex flex-col space-y-2">
+            <router-link 
+              to="/login" 
+              @click="isMobileMenuOpen = false"
+              class="block py-2.5 rounded-md text-base font-medium text-slate-300 hover:bg-slate-900 hover:text-white transition-colors uppercase tracking-wider"
+            >
+              Đăng nhập
+            </router-link>
+            <router-link 
+              to="/register" 
+              @click="isMobileMenuOpen = false"
+              class="block text-center py-2.5 rounded-xl text-base font-bold bg-brand-accent hover:bg-brand-accentHover text-white transition-all duration-300 shadow uppercase tracking-wider"
+            >
+              Đăng ký
+            </router-link>
+          </div>
+        </div>
       </div>
     </div>
 

@@ -91,8 +91,8 @@ const filteredOrders = computed(() => {
 });
 
 // Update order status
-const handleUpdateStatus = (orderId: string, nextStatus: Order['order_status']) => {
-  const idx = orders.value.findIndex(o => o.order_id === orderId);
+const handleUpdateStatus = (orderId: any, nextStatus: Order['order_status']) => {
+  const idx = orders.value.findIndex(o => String(o.order_id) === String(orderId));
   if (idx === -1) return;
 
   const currentOrder = orders.value[idx];
@@ -126,7 +126,7 @@ const handleUpdateStatus = (orderId: string, nextStatus: Order['order_status']) 
 };
 
 // Admin Cancel order
-const handleAdminCancelOrder = (orderId: string) => {
+const handleAdminCancelOrder = (orderId: any) => {
   const reason = prompt('Nhập lý do nhân viên hủy đơn hàng:');
   if (reason === null) return; // cancel prompt
   
@@ -162,7 +162,7 @@ const updateSoldQuantity = (orderObj: Order) => {
     try {
       const productsList: typeof mockProducts = JSON.parse(saved);
       
-      orderObj.items.forEach(item => {
+      orderObj.details.forEach(item => {
         productsList.forEach(p => {
           p.colors.forEach(c => {
             c.skus.forEach(s => {
@@ -188,7 +188,7 @@ const restoreOrderStock = (orderObj: Order) => {
     try {
       const productsList: typeof mockProducts = JSON.parse(saved);
       
-      orderObj.items.forEach(item => {
+      orderObj.details.forEach(item => {
         productsList.forEach(p => {
           p.colors.forEach(c => {
             c.skus.forEach(s => {
@@ -230,8 +230,8 @@ const restoreOrderStock = (orderObj: Order) => {
 };
 
 // Approve return request
-const handleReviewReturn = (returnId: string, action: 'approved' | 'rejected') => {
-  const idx = returnRequests.value.findIndex(r => r.return_id === returnId);
+const handleReviewReturn = (returnId: any, action: 'approved' | 'rejected') => {
+  const idx = returnRequests.value.findIndex(r => String(r.return_id) === String(returnId));
   if (idx === -1) return;
 
   const req = returnRequests.value[idx];
@@ -244,8 +244,8 @@ const handleReviewReturn = (returnId: string, action: 'approved' | 'rejected') =
 };
 
 // Complete return request (adjust inventory)
-const handleCompleteReturn = (returnId: string) => {
-  const idx = returnRequests.value.findIndex(r => r.return_id === returnId);
+const handleCompleteReturn = (returnId: any) => {
+  const idx = returnRequests.value.findIndex(r => String(r.return_id) === String(returnId));
   if (idx === -1) return;
 
   const req = returnRequests.value[idx];

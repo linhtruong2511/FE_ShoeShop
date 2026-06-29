@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { Product } from '../../types';
+import type { Product, ProductListItem } from '../../types';
 import { computed } from 'vue';
 import { getDiscountedPrice } from '../../stores/cart';
 
 const props = defineProps<{
-  product: Product;
+  product: Product | ProductListItem;
 }>();
 
 const formatPrice = (value: number) => {
@@ -12,8 +12,12 @@ const formatPrice = (value: number) => {
 };
 
 const defaultColor = computed(() => {
-  if (!props.product.colors || props.product.colors.length === 0) return null;
-  return props.product.colors.find(c => c.is_default) || props.product.colors[0];
+  const p = props.product as any;
+  if (p.default_color) {
+    return p.default_color;
+  }
+  if (!p.colors || p.colors.length === 0) return null;
+  return p.colors.find((c: any) => c.is_default) || p.colors[0];
 });
 
 const hasDiscount = computed(() => {
@@ -33,7 +37,10 @@ const discountPercentage = computed(() => {
 
 const displayedPrice = computed(() => {
   if (!defaultColor.value) return 0;
-  return getDiscountedPrice(defaultColor.value);
+  if ('discounted_price' in defaultColor.value) {
+    return defaultColor.value.discounted_price;
+  }
+  return getDiscountedPrice(defaultColor.value as any);
 });
 
 const originalPrice = computed(() => {
@@ -42,9 +49,15 @@ const originalPrice = computed(() => {
 });
 
 const displayImage = computed(() => {
-  if (!defaultColor.value || defaultColor.value.images.length === 0) return '';
-  return defaultColor.value.images.find(img => img.is_main)?.image_url || defaultColor.value.images[0].image_url;
+  if (!defaultColor.value) return '';
+  if ('main_image_url' in defaultColor.value) {
+    return defaultColor.value.main_image_url || '';
+  }
+  const images = (defaultColor.value as any).images;
+  if (!images || images.length === 0) return '';
+  return images.find((img: any) => img.is_main)?.image_url || images[0].image_url;
 });
+
 </script>
 
 <template>
@@ -78,7 +91,7 @@ const displayImage = computed(() => {
 
       <!-- Image -->
       <img 
-        :src="displayImage" 
+        :src="displayImage || '/placeholder_image.png'" 
         :alt="product.product_name" 
         class="h-full w-full object-cover object-center group-hover:scale-105 transition-transform duration-500" 
         loading="lazy"
@@ -99,11 +112,11 @@ const displayImage = computed(() => {
         <!-- Rating -->
         <div class="flex items-center space-x-1 mb-3">
           <div class="flex items-center text-amber-400">
-            <svg v-for="i in 5" :key="i" class="h-3.5 w-3.5" :class="i <= Math.round(product.rating) ? 'fill-current' : 'text-slate-200 stroke-current'" viewBox="0 0 20 20">
+            <svg v-for="i in 5" :key="i" class="h-3.5 w-3.5" :class="i <= Math.round(product.rating || 5) ? 'fill-current' : 'text-slate-200 stroke-current'" viewBox="0 0 20 20">
               <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
             </svg>
           </div>
-          <span class="text-[11px] font-semibold text-slate-400">({{ product.reviewsCount }})</span>
+          <span class="text-[11px] font-semibold text-slate-400">({{ product.reviewsCount || 0 }})</span>
         </div>
       </div>
 

@@ -1,48 +1,60 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { mockProducts } from '../mocks/products';
-import type { Order, ReturnRequest, ReturnItem } from '../types';
+import type { Order } from '../types';
+import { orderService } from '../services/order.service';
 
 const route = useRoute();
 
-const order = ref<Order | null>(null);
+const order = ref<any | null>(null);
+const isLoading = ref(false);
+const errorMsg = ref<string | null>(null);
+
 const cancelReasonInput = ref('');
 const showCancelModal = ref(false);
+const isCancelling = ref(false);
 
 // Return Request States
 const showReturnModal = ref(false);
+const isSubmittingReturn = ref(false);
 const returnType = ref<'exchange' | 'refund'>('refund');
 const returnReason = ref<'wrong_size' | 'wrong_color' | 'defective' | 'wrong_item' | 'other'>('wrong_size');
 const returnReasonNote = ref('');
 const selectedItemsToReturn = ref<Record<string, { quantity: number; selected: boolean }>>({});
 
+const loadOrder = async () => {
+  isLoading.value = true;
+  errorMsg.value = null;
+  try {
+    const res = await orderService.getOrderDetail(route.params.id as string);
+    if (res.success && res.data) {
+      const orderData = res.data;
+      // Map details to items for template compatibility
+      orderData.items = orderData.details || [];
+      order.value = orderData;
+      
+      // Initialize return items selection
+      selectedItemsToReturn.value = {};
+      orderData.items.forEach((item: any) => {
+        selectedItemsToReturn.value[item.order_detail_id] = {
+          quantity: item.quantity,
+          selected: false
+        };
+      });
+    } else {
+      errorMsg.value = res.message || 'Không tìm thấy thông tin đơn hàng.';
+    }
+  } catch (err: any) {
+    console.error('Failed to load order:', err);
+    errorMsg.value = err.response?.data?.detail || 'Có lỗi xảy ra khi tải chi tiết đơn hàng.';
+  } finally {
+    isLoading.value = false;
+  }
+};
+
 onMounted(() => {
   loadOrder();
 });
-
-const loadOrder = () => {
-  const savedOrders = localStorage.getItem('myshoes_orders');
-  if (savedOrders) {
-    try {
-      const ordersList: Order[] = JSON.parse(savedOrders);
-      const foundOrder = ordersList.find(o => o.order_id === route.params.id);
-      if (foundOrder) {
-        order.value = foundOrder;
-        
-        // Initialize return items selection
-        foundOrder.items.forEach(item => {
-          selectedItemsToReturn.value[item.order_detail_id] = {
-            quantity: item.quantity,
-            selected: false
-          };
-        });
-      }
-    } catch (e) {
-      console.error('Failed to parse orders', e);
-    }
-  }
-};
 
 const formatPrice = (value: number) => {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
@@ -92,7 +104,8 @@ const getStatusBadgeClass = (status: Order['order_status']) => {
 const canCancel = computed(() => {
   if (!order.value) return false;
   const status = order.value.order_status;
-  return status === 'pending' || status === 'confirmed' || status === 'preparing';
+  // Backend only allows cancelling pending orders
+  return status === 'pending';
 });
 
 const canReturn = computed(() => {
@@ -101,73 +114,40 @@ const canReturn = computed(() => {
 });
 
 // Cancel Order action
-const executeCancelOrder = () => {
+const executeCancelOrder = async () => {
   if (!order.value) return;
-
-  // 1. Restore stock to mock database
-  const savedOrders = localStorage.getItem('myshoes_orders');
-  if (savedOrders) {
-    try {
-      const ordersList: Order[] = JSON.parse(savedOrders);
-      const idx = ordersList.findIndex(o => o.order_id === order.value?.order_id);
-      if (idx !== -1) {
-        // Restore stock
-        ordersList[idx].items.forEach(detail => {
-          // find matching sku and increase stock quantity
-          mockProducts.forEach(p => {
-            p.colors.forEach(c => {
-              c.skus.forEach(s => {
-                if (s.sku_id === detail.sku_id) {
-                  s.stock_quantity += detail.quantity;
-                }
-              });
-            });
-          });
-        });
-
-        // 2. Update status and history
-        ordersList[idx].order_status = 'cancelled';
-        ordersList[idx].cancelled_reason = cancelReasonInput.value || 'Khách hàng chủ động hủy qua trang web';
-        ordersList[idx].cancelled_at = new Date().toISOString();
-        ordersList[idx].status_history.unshift({
-          status_log_id: `log-${order.value.order_id}-${ordersList[idx].status_history.length}`,
-          order_id: order.value.order_id,
-          old_status: order.value.order_status,
-          new_status: 'cancelled',
-          note: `Đơn hàng đã được hủy bởi khách hàng. Lý do: ${ordersList[idx].cancelled_reason}`,
-          changed_at: new Date().toISOString()
-        });
-
-        // 3. Save back to localStorage
-        localStorage.setItem('myshoes_orders', JSON.stringify(ordersList));
-        showCancelModal.value = false;
-        loadOrder();
-        alert('Đã hủy đơn hàng thành công và hoàn lại tồn kho sản phẩm.');
-      }
-    } catch (e) {
-      console.error(e);
+  
+  isCancelling.value = true;
+  try {
+    const reason = cancelReasonInput.value.trim() || 'Khách hàng chủ động hủy qua trang web';
+    const res = await orderService.cancelOrder(order.value.order_id, reason);
+    if (res.success) {
+      showCancelModal.value = false;
+      alert('Hủy đơn hàng thành công!');
+      await loadOrder();
+    } else {
+      alert(res.message || 'Hủy đơn hàng thất bại.');
     }
+  } catch (err: any) {
+    console.error('Cancel order error:', err);
+    alert(err.response?.data?.detail || 'Không thể hủy đơn hàng vào lúc này.');
+  } finally {
+    isCancelling.value = false;
   }
 };
 
 // Create return request action
-const submitReturnRequest = () => {
+const submitReturnRequest = async () => {
   if (!order.value) return;
 
-  const returnItems: ReturnItem[] = [];
-  let index = 0;
+  const returnItems: any[] = [];
   
-  order.value.items.forEach(detail => {
+  order.value.items.forEach((detail: any) => {
     const selection = selectedItemsToReturn.value[detail.order_detail_id];
     if (selection && selection.selected) {
       returnItems.push({
-        return_item_id: `ri-${order.value?.order_id}-${index++}`,
-        return_id: `ret-${order.value?.order_id}`,
-        original_sku_id: detail.sku_id,
-        quantity: Math.min(selection.quantity, detail.quantity),
-        product_name: detail.product_name_snapshot,
-        color_name: detail.color_name_snapshot,
-        size: detail.size_snapshot
+        sku_id: detail.sku_id,
+        quantity: Math.min(selection.quantity, detail.quantity)
       });
     }
   });
@@ -177,27 +157,29 @@ const submitReturnRequest = () => {
     return;
   }
 
-  const returnRequestId = 'ret-' + Date.now();
-  const newReturnRequest: ReturnRequest = {
-    return_id: returnRequestId,
-    order_id: order.value.order_id,
-    order_code: order.value.order_code,
-    request_type: returnType.value,
-    reason: returnReason.value,
-    reason_note: returnReasonNote.value,
-    status: 'pending',
-    items: returnItems,
-    created_at: new Date().toISOString()
-  };
+  isSubmittingReturn.value = true;
+  try {
+    const returnData = {
+      request_type: returnType.value,
+      reason: returnReason.value,
+      reason_note: returnReasonNote.value.trim(),
+      items: returnItems
+    };
 
-  // Save to localStorage return requests list
-  const existingReturnsStr = localStorage.getItem('myshoes_returns');
-  const existingReturns: ReturnRequest[] = existingReturnsStr ? JSON.parse(existingReturnsStr) : [];
-  existingReturns.unshift(newReturnRequest);
-  localStorage.setItem('myshoes_returns', JSON.stringify(existingReturns));
-
-  showReturnModal.value = false;
-  alert('Gửi yêu cầu đổi trả thành công. Nhân viên cửa hàng sẽ liên hệ với bạn sớm nhất!');
+    const res = await orderService.createReturn(order.value.order_id, returnData);
+    if (res.success) {
+      showReturnModal.value = false;
+      alert('Gửi yêu cầu đổi trả thành công. Nhân viên cửa hàng sẽ liên hệ với bạn sớm nhất!');
+      await loadOrder();
+    } else {
+      alert(res.message || 'Gửi yêu cầu đổi trả thất bại.');
+    }
+  } catch (err: any) {
+    console.error('Return request error:', err);
+    alert(err.response?.data?.detail || 'Không thể gửi yêu cầu đổi trả vào lúc này.');
+  } finally {
+    isSubmittingReturn.value = false;
+  }
 };
 </script>
 
@@ -278,7 +260,7 @@ const submitReturnRequest = () => {
         <div v-for="item in order.items" :key="item.order_detail_id" class="flex py-4 justify-between items-center">
           <div class="flex items-center space-x-4">
             <img 
-              :src="item.image_url_snapshot" 
+              :src="item.image_url_snapshot || '/placeholder_image.png'" 
               :alt="item.product_name_snapshot"
               class="h-16 w-16 rounded-xl object-cover bg-slate-50 border border-slate-100 flex-shrink-0"
             />
@@ -352,6 +334,7 @@ const submitReturnRequest = () => {
     </div>
 
     <!-- Modal Hủy Đơn Hàng -->
+
     <div v-if="showCancelModal" class="fixed inset-0 z-50 flex items-center justify-center overflow-hidden">
       <div class="absolute inset-0 bg-slate-900 bg-opacity-60 backdrop-blur-sm" @click="showCancelModal = false"></div>
       <div class="bg-white rounded-3xl max-w-md w-full p-6 z-10 shadow-2xl text-left space-y-4">
@@ -377,15 +360,17 @@ const submitReturnRequest = () => {
           </button>
           <button 
             @click="executeCancelOrder"
-            class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs py-3 rounded-xl transition-all"
+            :disabled="isCancelling"
+            class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
-            Xác nhận Hủy Đơn
+            {{ isCancelling ? 'Đang Hủy...' : 'Xác nhận Hủy Đơn' }}
           </button>
         </div>
       </div>
     </div>
 
     <!-- Modal Đổi Trả Sản Phẩm -->
+     
     <div v-if="showReturnModal" class="fixed inset-0 z-50 flex items-center justify-center overflow-hidden">
       <div class="absolute inset-0 bg-slate-900 bg-opacity-60 backdrop-blur-sm" @click="showReturnModal = false"></div>
       <div class="bg-white rounded-3xl max-w-lg w-full p-6 md:p-8 z-10 shadow-2xl text-left overflow-y-auto max-h-[85vh] space-y-6">
@@ -400,7 +385,7 @@ const submitReturnRequest = () => {
               v-model="selectedItemsToReturn[item.order_detail_id].selected"
               class="rounded border-slate-300 text-brand-blue focus:ring-brand-blue h-4 w-4"
             />
-            <img :src="item.image_url_snapshot" class="h-10 w-10 rounded object-cover border" />
+            <img :src="item.image_url_snapshot || '/placeholder_image.png'" class="h-10 w-10 rounded object-cover border" />
             <div class="flex-1 text-xs">
               <p class="font-bold text-slate-800">{{ item.product_name_snapshot }}</p>
               <p class="text-slate-400 mt-0.5">Size: {{ item.size_snapshot }} | Màu: {{ item.color_name_snapshot }}</p>
@@ -470,9 +455,10 @@ const submitReturnRequest = () => {
           </button>
           <button 
             @click="submitReturnRequest"
-            class="flex-1 bg-slate-950 hover:bg-black text-white font-bold text-xs py-3 rounded-xl transition-all"
+            :disabled="isSubmittingReturn"
+            class="flex-1 bg-slate-950 hover:bg-black text-white font-bold text-xs py-3 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
-            Gửi yêu cầu
+            {{ isSubmittingReturn ? 'Đang gửi...' : 'Gửi yêu cầu' }}
           </button>
         </div>
       </div>

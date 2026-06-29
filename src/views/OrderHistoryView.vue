@@ -1,19 +1,29 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue';
 import type { Order } from '../types';
+import { orderService } from '../services/order.service';
 
 const orders = ref<Order[]>([]);
 const activeFilter = ref<string>('all');
+const isLoading = ref(false);
+const errorMsg = ref<string | null>(null);
+
+const fetchOrders = async () => {
+  isLoading.value = true;
+  errorMsg.value = null;
+  try {
+    const res = await orderService.getMyOrders(0, 100);
+    orders.value = res.data || [];
+  } catch (err: any) {
+    console.error('Failed to load orders:', err);
+    errorMsg.value = 'Không thể kết nối đến máy chủ. Vui lòng thử lại sau.';
+  } finally {
+    isLoading.value = false;
+  }
+};
 
 onMounted(() => {
-  const savedOrders = localStorage.getItem('myshoes_orders');
-  if (savedOrders) {
-    try {
-      orders.value = JSON.parse(savedOrders);
-    } catch (e) {
-      console.error('Failed to parse orders', e);
-    }
-  }
+  fetchOrders();
 });
 
 const formatPrice = (value: number) => {
@@ -69,6 +79,7 @@ const filteredOrders = computed(() => {
 });
 </script>
 
+
 <template>
   <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     <nav class="flex mb-8 text-xs font-bold text-slate-400 uppercase tracking-wider space-x-2">
@@ -104,8 +115,30 @@ const filteredOrders = computed(() => {
       </div>
     </div>
 
-    <!-- Empty state -->
-    <div v-if="filteredOrders.length === 0" class="bg-white rounded-3xl p-16 text-center border border-slate-100 shadow-premium">
+    <div v-if="isLoading" class="space-y-6">
+      <div v-for="n in 3" :key="n" class="bg-white rounded-3xl border border-slate-100 p-6 flex flex-col md:flex-row md:items-center md:justify-between text-left animate-pulse">
+        <div class="space-y-3.5 w-1/2">
+          <div class="h-6 bg-slate-200 rounded w-1/3"></div>
+          <div class="h-4 bg-slate-200 rounded w-1/4"></div>
+          <div class="flex space-x-2.5">
+            <div v-for="i in 3" :key="i" class="h-10 w-10 bg-slate-200 rounded-lg"></div>
+          </div>
+        </div>
+        <div class="h-10 bg-slate-200 rounded w-28"></div>
+      </div>
+    </div>
+
+    <div v-else-if="errorMsg" class="bg-red-50 border border-red-100 rounded-3xl p-16 text-center">
+      <p class="text-red-800 text-sm font-semibold mb-4">{{ errorMsg }}</p>
+      <button 
+        @click="fetchOrders" 
+        class="bg-brand-accent hover:bg-brand-accentHover text-white px-6 py-2.5 rounded-full text-xs font-bold transition-all shadow"
+      >
+        Thử lại
+      </button>
+    </div>
+
+    <div v-else-if="filteredOrders.length === 0" class="bg-white rounded-3xl p-16 text-center border border-slate-100 shadow-premium">
       <div class="rounded-full bg-slate-50 p-6 text-slate-400 max-w-max mx-auto mb-4">
         <svg class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
@@ -118,7 +151,6 @@ const filteredOrders = computed(() => {
       </router-link>
     </div>
 
-    <!-- Orders grid -->
     <div v-else class="space-y-6">
       <div 
         v-for="order in filteredOrders" 
@@ -142,15 +174,15 @@ const filteredOrders = computed(() => {
           <!-- Quick item preview -->
           <div class="flex items-center space-x-2.5 overflow-x-auto py-1">
             <div 
-              v-for="item in order.items.slice(0, 3)" 
+              v-for="item in order.details.slice(0, 3)" 
               :key="item.order_detail_id" 
               class="h-10 w-10 rounded-lg overflow-hidden border border-slate-100 flex-shrink-0"
               :title="item.product_name_snapshot"
             >
-              <img :src="item.image_url_snapshot" :alt="item.product_name_snapshot" class="h-full w-full object-cover" />
+              <img :src="item.image_url_snapshot || '/placeholder_image.png'" :alt="item.product_name_snapshot" class="h-full w-full object-cover" />
             </div>
-            <span class="text-xs text-slate-400 font-semibold" v-if="order.items.length > 3">
-              và {{ order.items.length - 3 }} sản phẩm khác
+            <span class="text-xs text-slate-400 font-semibold" v-if="order.details.length > 3">
+              và {{ order.details.length - 3 }} sản phẩm khác
             </span>
           </div>
         </div>

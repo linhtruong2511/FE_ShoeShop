@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { mockProducts } from '../mocks/products';
 import ProductCard from '../components/common/ProductCard.vue';
-import { getDiscountedPrice } from '../stores/cart';
+import { productService } from '../services/product.service';
+import { brandService } from '../services/brand.service';
+import type { ProductListItem } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -18,99 +19,135 @@ const isMobileFilterOpen = ref(false);
 const availableBrands = ['Nike', 'Adidas', 'Puma', 'Jordan'];
 const availableSizes = [38, 39, 40, 41, 42, 43, 44];
 
-// Watch route queries to apply filters from Header or Home
-const applyRouteParams = () => {
-  const brandParam = route.query.brand as string;
-  if (brandParam && availableBrands.includes(brandParam)) {
-    selectedBrands.value = [brandParam];
-  } else if (!brandParam && route.query.brand === undefined) {
-    // If navigating to general products, don't clear unless routing directly
-  }
+// API States
+const products = ref<ProductListItem[]>([]);
+const brandsList = ref<any[]>([]);
+const isLoading = ref(false);
+const errorMsg = ref<string | null>(null);
+const totalItems = ref(0);
+const totalPages = ref(1);
+const page = ref(1);
+const limit = ref(12);
+
+// Fetch Products from API
+const fetchProducts = async () => {
+  isLoading.value = true;
+  errorMsg.value = null;
+
+  const params: any = {
+    page: page.value,
+    limit: limit.value,
+  };
 
   const searchParam = route.query.search as string;
-  if (searchParam) {
-    // Search query logic is implemented in filteredProducts
+  if (searchParam && searchParam.trim()) {
+    params.keyword = searchParam.trim();
+  }
+
+  if (selectedBrands.value.length > 0) {
+    const brandIds = selectedBrands.value
+      .map(name => brandsList.value.find(b => b.brand_name.toLowerCase() === name.toLowerCase())?.brand_id)
+      .filter(id => id !== undefined);
+    
+    if (brandIds.length > 0) {
+      params.brand_id = brandIds[0];
+    }
+  }
+
+  if (selectedSizes.value.length > 0) {
+    params.size = String(selectedSizes.value[0]);
+  }
+
+  if (priceRange.value === 'under-2m') {
+    params.max_price = 2000000;
+  } else if (priceRange.value === '2m-3m') {
+    params.min_price = 2000000;
+    params.max_price = 3000000;
+  } else if (priceRange.value === 'over-3m') {
+    params.min_price = 3000000;
+  }
+
+  if (sortOption.value === 'price-asc') {
+    params.sort_by = 'price';
+    params.sort_order = 'asc';
+  } else if (sortOption.value === 'price-desc') {
+    params.sort_by = 'price';
+    params.sort_order = 'desc';
+  } else if (sortOption.value === 'rating') {
+    params.sort_by = 'sold_quantity';
+    params.sort_order = 'desc';
+  } else {
+    params.sort_by = 'created_at';
+    params.sort_order = 'desc';
+  }
+
+  try {
+    const res = await productService.getProducts(params);
+    products.value = res.data || [];
+    totalItems.value = res.pagination?.total_items || 0;
+    totalPages.value = res.pagination?.total_pages || 1;
+  } catch (err: any) {
+    console.error('Error loading products:', err);
+    errorMsg.value = 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra lại kết nối mạng.';
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const applyRouteParams = () => {
+  const brandParam = route.query.brand as string;
+  if (brandParam) {
+    const isId = /^\d+$/.test(brandParam);
+    if (isId) {
+      const brandId = parseInt(brandParam);
+      const matched = brandsList.value.find(b => b.brand_id === brandId);
+      if (matched) {
+        selectedBrands.value = [matched.brand_name];
+      }
+    } else {
+      const matched = availableBrands.find(b => b.toLowerCase() === brandParam.toLowerCase());
+      if (matched) {
+        selectedBrands.value = [matched];
+      }
+    }
   }
 };
 
 watch(() => route.query, () => {
   applyRouteParams();
+  page.value = 1;
+  fetchProducts();
 }, { deep: true });
 
-onMounted(() => {
-  applyRouteParams();
+watch([selectedBrands, selectedSizes, priceRange, sortOption], () => {
+  page.value = 1;
+  fetchProducts();
+}, { deep: true });
+
+watch(page, () => {
+  fetchProducts();
 });
 
-// Reset all filters
+onMounted(async () => {
+  isLoading.value = true;
+  try {
+    const brandsRes = await brandService.getBrands(0, 100);
+    brandsList.value = brandsRes.data || [];
+  } catch (e) {
+    console.error('Error loading filter options:', e);
+  }
+  applyRouteParams();
+  fetchProducts();
+});
+
 const clearFilters = () => {
   selectedBrands.value = [];
   selectedSizes.value = [];
   priceRange.value = 'all';
   sortOption.value = 'default';
+  page.value = 1;
   router.push({ query: {} });
 };
-
-// Filter and sort product computation
-const filteredProducts = computed(() => {
-  let products = [...mockProducts];
-
-  const getProductPrice = (p: typeof mockProducts[0]) => {
-    if (!p.colors || p.colors.length === 0) return 0;
-    const def = p.colors.find(c => c.is_default) || p.colors[0];
-    return getDiscountedPrice(def);
-  };
-
-  const getProductSizes = (p: typeof mockProducts[0]) => {
-    if (!p.colors) return [];
-    return p.colors.flatMap(c => c.skus.map(s => parseInt(s.size)));
-  };
-
-  // 1. Filter by Search Query
-  const searchQuery = (route.query.search as string || '').trim().toLowerCase();
-  if (searchQuery) {
-    products = products.filter(
-      p => p.product_name.toLowerCase().includes(searchQuery) || p.brand_name.toLowerCase().includes(searchQuery)
-    );
-  }
-
-  // 2. Filter by Brand
-  if (selectedBrands.value.length > 0) {
-    products = products.filter(p => selectedBrands.value.includes(p.brand_name));
-  }
-
-  // 3. Filter by Size
-  if (selectedSizes.value.length > 0) {
-    products = products.filter(p => {
-      const sizes = getProductSizes(p);
-      return sizes.some(size => selectedSizes.value.includes(size));
-    });
-  }
-
-  // 4. Filter by Price Range
-  if (priceRange.value !== 'all') {
-    if (priceRange.value === 'under-2m') {
-      products = products.filter(p => getProductPrice(p) < 2000000);
-    } else if (priceRange.value === '2m-3m') {
-      products = products.filter(p => {
-        const price = getProductPrice(p);
-        return price >= 2000000 && price <= 3000000;
-      });
-    } else if (priceRange.value === 'over-3m') {
-      products = products.filter(p => getProductPrice(p) > 3000000);
-    }
-  }
-
-  // 5. Sort Products
-  if (sortOption.value === 'price-asc') {
-    products.sort((a, b) => getProductPrice(a) - getProductPrice(b));
-  } else if (sortOption.value === 'price-desc') {
-    products.sort((a, b) => getProductPrice(b) - getProductPrice(a));
-  } else if (sortOption.value === 'rating') {
-    products.sort((a, b) => b.rating - a.rating);
-  }
-
-  return products;
-});
 
 const toggleBrandSelection = (brand: string) => {
   const index = selectedBrands.value.indexOf(brand);
@@ -249,7 +286,7 @@ const toggleSizeSelection = (size: number) => {
         <!-- Top Toolbar -->
         <div class="flex items-center justify-between bg-white rounded-2xl p-4 border border-slate-100 shadow-premium mb-6">
           <p class="text-sm font-semibold text-slate-500">
-            Tìm thấy <span class="text-brand-blue text-base font-bold">{{ filteredProducts.length }}</span> đôi giày phù hợp
+            Tìm thấy <span class="text-brand-blue text-base font-bold">{{ totalItems }}</span> đôi giày phù hợp
           </p>
 
           <!-- Sorting Option -->
@@ -278,9 +315,30 @@ const toggleSizeSelection = (size: number) => {
           </div>
         </div>
 
+        <!-- Loading State -->
+        <div v-if="isLoading" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+          <div v-for="n in 6" :key="n" class="border border-slate-100 rounded-2xl p-5 space-y-4 animate-pulse bg-white">
+            <div class="aspect-square bg-slate-200 rounded-xl"></div>
+            <div class="h-4 bg-slate-200 rounded w-1/3"></div>
+            <div class="h-5 bg-slate-200 rounded w-3/4"></div>
+            <div class="h-4 bg-slate-200 rounded w-1/2"></div>
+          </div>
+        </div>
+
+        <!-- Error State -->
+        <div v-else-if="errorMsg" class="bg-red-50 border border-red-100 rounded-2xl p-8 text-center my-6">
+          <p class="text-red-800 text-sm font-semibold mb-4">{{ errorMsg }}</p>
+          <button 
+            @click="fetchProducts" 
+            class="bg-brand-accent hover:bg-brand-accentHover text-white px-6 py-2.5 rounded-full text-xs font-bold transition-all shadow"
+          >
+            Thử lại
+          </button>
+        </div>
+
         <!-- Empty State -->
         <div 
-          v-if="filteredProducts.length === 0" 
+          v-else-if="products.length === 0" 
           class="bg-white rounded-3xl p-16 text-center border border-slate-100 shadow-premium"
         >
           <div class="rounded-full bg-slate-50 p-6 text-slate-400 max-w-max mx-auto mb-4">
@@ -298,13 +356,34 @@ const toggleSizeSelection = (size: number) => {
           </button>
         </div>
 
-        <!-- Grid of Product Cards -->
-        <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-          <ProductCard 
-            v-for="product in filteredProducts" 
-            :key="product.product_id"
-            :product="product" 
-          />
+        <!-- Grid of Product Cards & Pagination -->
+        <div v-else>
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+            <ProductCard 
+              v-for="product in products" 
+              :key="product.product_id"
+              :product="product" 
+            />
+          </div>
+
+          <!-- Pagination Controls -->
+          <div v-if="totalPages > 1" class="flex justify-center items-center space-x-3 mt-12">
+            <button 
+              @click="page > 1 ? page-- : null"
+              :disabled="page === 1"
+              class="px-4 py-2 rounded-lg border text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed border-slate-200 bg-white text-slate-600 hover:border-brand-blue hover:text-brand-blue cursor-pointer"
+            >
+              Trước
+            </button>
+            <span class="text-sm font-bold text-slate-700">Trang {{ page }} / {{ totalPages }}</span>
+            <button 
+              @click="page < totalPages ? page++ : null"
+              :disabled="page === totalPages"
+              class="px-4 py-2 rounded-lg border text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed border-slate-200 bg-white text-slate-600 hover:border-brand-blue hover:text-brand-blue cursor-pointer"
+            >
+              Sau
+            </button>
+          </div>
         </div>
       </div>
 

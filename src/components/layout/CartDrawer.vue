@@ -22,21 +22,22 @@ const formatPrice = (value: number) => {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
 };
 
-const updateQuantity = (id: string, qty: number) => {
-  const result = cartStore.updateQuantity(id, qty);
+const updateQuantity = async (id: number | string, qty: number) => {
+  const result = await cartStore.updateQuantity(id as any, qty);
   if (!result.success) {
     alert(result.message);
   }
 };
 
-const removeItem = (id: string) => {
-  cartStore.removeFromCart(id);
+const removeItem = async (id: number | string) => {
+  await cartStore.removeFromCart(id as any);
 };
 
-const goToProduct = (productId: string) => {
+const goToProduct = (productId: number | string) => {
   emit('close');
   router.push(`/product/${productId}`);
 };
+
 
 const goToCheckout = () => {
   emit('close');
@@ -104,7 +105,7 @@ const goToCheckout = () => {
                        @click="goToProduct(item.product.product_id)"
                        class="h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 cursor-pointer hover:opacity-85 transition-opacity"
                      >
-                       <img :src="item.selectedColor.images.find(img => img.is_main)?.image_url || item.selectedColor.images[0].image_url" :alt="item.product.product_name" class="h-full w-full object-cover object-center" />
+                       <img :src="(item.selectedColor as any).images?.find((img: any) => img.is_main)?.image_url || (item.selectedColor as any).images?.[0]?.image_url || (item.selectedColor as any).main_image_url || '/placeholder_image.png'" :alt="item.product.product_name" class="h-full w-full object-cover object-center" />
                      </div>
 
                      <div class="ml-4 flex flex-1 flex-col">

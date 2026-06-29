@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { mockProducts } from '../mocks/products';
 import { useCartStore, getDiscountedPrice } from '../stores/cart';
 import ProductCard from '../components/common/ProductCard.vue';
-import type { ProductColor, ProductSku } from '../types';
+import { productService } from '../services/product.service';
+import type { Product, ProductColor, ProductSku, ProductListItem } from '../types';
 
 const route = useRoute();
 const router = useRouter();
@@ -14,12 +14,8 @@ const showSizeChart = () => {
   alert('Vui lòng chọn size tương ứng với chiều dài chân:\n- Size 38 = 24.0cm\n- Size 39 = 24.5cm\n- Size 40 = 25.0cm\n- Size 41 = 25.5cm\n- Size 42 = 26.0cm\n- Size 43 = 26.5cm\n- Size 44 = 27.0cm');
 };
 
-// Retrieve product
-const product = computed(() => {
-  return mockProducts.find(p => p.product_id === route.params.id);
-});
-
 // Selection States
+const product = ref<Product | null>(null);
 const activeImageIndex = ref(0);
 const selectedColor = ref<ProductColor | null>(null);
 const selectedSku = ref<ProductSku | null>(null);
@@ -29,6 +25,11 @@ const showSuccessNotification = ref(false);
 const successMessage = ref('');
 const errorMessage = ref('');
 
+// API States
+const isLoading = ref(false);
+const errorMsg = ref<string | null>(null);
+const relatedProducts = ref<ProductListItem[]>([]);
+
 const resetSelection = () => {
   activeImageIndex.value = 0;
   selectedSku.value = null;
@@ -36,7 +37,7 @@ const resetSelection = () => {
   showSizeWarning.value = false;
   errorMessage.value = '';
   
-  if (product.value && product.value.colors.length > 0) {
+  if (product.value && product.value.colors && product.value.colors.length > 0) {
     const defaultColor = product.value.colors.find(c => c.is_default) || product.value.colors[0];
     selectedColor.value = defaultColor;
   } else {
@@ -44,12 +45,73 @@ const resetSelection = () => {
   }
 };
 
+const fetchProductDetail = async () => {
+  const productId = route.params.id as string;
+  // debugger
+  if (!productId) {
+    router.push('/products');
+    return;
+  }
+
+  isLoading.value = true;
+  errorMsg.value = null;
+
+  try {
+    const res = await productService.getProductDetail(productId);
+    const raw = res.data;
+
+    // Map API response to full ProductColor shape (backend may omit status/product_id)
+    if (raw && Array.isArray(raw.colors)) {
+      raw.colors = raw.colors.map((c: any) => ({
+        ...c,
+        product_id: raw.product_id,
+        color_code: c.color_code || c.color_name?.toLowerCase().replace(/\s+/g, '-') || 'default',
+        status: c.status || 'active',
+        sold_quantity: c.sold_quantity ?? 0,
+        images: Array.isArray(c.images) ? c.images.map((img: any) => ({
+          ...img,
+          color_id: img.color_id ?? c.color_id,
+        })) : [],
+        skus: Array.isArray(c.skus) ? c.skus.map((sku: any) => ({
+          ...sku,
+          sku_code: sku.sku_code || String(sku.sku_id),
+          color_id: sku.color_id ?? c.color_id,
+          sold_quantity: sku.sold_quantity ?? 0,
+          status: sku.status || 'active',
+        })) : [],
+      }));
+    }
+
+    product.value = raw;
+    resetSelection();
+    
+    // Load related products based on brand if brand exists
+    if (product.value?.brand?.brand_id) {
+      fetchRelatedProducts(product.value.brand.brand_id, productId);
+    }
+  } catch (err: any) {
+    console.error('Error fetching product details:', err);
+    errorMsg.value = 'Không thể tải thông tin chi tiết sản phẩm. Vui lòng kiểm tra lại kết nối.';
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const fetchRelatedProducts = async (brandId: number | string, currentProductId: number | string) => {
+  try {
+    const res = await productService.getProducts({ brand_id: brandId as any, limit: 5 });
+    relatedProducts.value = (res.data || []).filter((p: any) => p.product_id !== currentProductId).slice(0, 4);
+  } catch (e) {
+    console.error('Error fetching related products:', e);
+  }
+};
+
 onMounted(() => {
-  resetSelection();
+  fetchProductDetail();
 });
 
 watch(() => route.params.id, () => {
-  resetSelection();
+  fetchProductDetail();
 });
 
 watch(selectedColor, () => {
@@ -90,19 +152,11 @@ const originalPrice = computed(() => {
 
 const galleryImages = computed(() => {
   if (!selectedColor.value) return [];
-  return selectedColor.value.images.map(img => img.image_url);
-});
-
-// Related Products
-const relatedProducts = computed(() => {
-  if (!product.value) return [];
-  return mockProducts
-    .filter(p => p.brand_name === product.value?.brand_name && p.product_id !== product.value?.product_id)
-    .slice(0, 4);
+  return selectedColor.value.images?.map(img => img.image_url) || [];
 });
 
 // Add to Cart Handlers
-const handleAddToCart = () => {
+const handleAddToCart = async () => {
   if (!product.value || !selectedColor.value) return;
   
   if (selectedSku.value === null) {
@@ -113,7 +167,7 @@ const handleAddToCart = () => {
   showSizeWarning.value = false;
   errorMessage.value = '';
   
-  const result = cartStore.addToCart(product.value, selectedColor.value, selectedSku.value, quantity.value);
+  const result = await cartStore.addToCart(product.value, selectedColor.value, selectedSku.value, quantity.value);
   if (result.success) {
     successMessage.value = result.message;
     showSuccessNotification.value = true;
@@ -125,7 +179,7 @@ const handleAddToCart = () => {
   }
 };
 
-const handleBuyNow = () => {
+const handleBuyNow = async () => {
   if (!product.value || !selectedColor.value) return;
   
   if (selectedSku.value === null) {
@@ -136,7 +190,7 @@ const handleBuyNow = () => {
   showSizeWarning.value = false;
   errorMessage.value = '';
   
-  const result = cartStore.addToCart(product.value, selectedColor.value, selectedSku.value, quantity.value);
+  const result = await cartStore.addToCart(product.value, selectedColor.value, selectedSku.value, quantity.value);
   if (result.success) {
     router.push('/checkout');
   } else {
@@ -146,8 +200,40 @@ const handleBuyNow = () => {
 </script>
 
 <template>
-  <div v-if="product && selectedColor" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-    
+
+
+  <div v-if="isLoading" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 animate-pulse">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 bg-white p-10 rounded-3xl border border-slate-100 shadow-premium">
+      <div class="lg:col-span-6 flex flex-col space-y-4">
+        <div class="aspect-square bg-slate-200 rounded-2xl"></div>
+        <div class="grid grid-cols-4 gap-4">
+          <div v-for="n in 4" :key="n" class="aspect-square bg-slate-200 rounded-xl"></div>
+        </div>
+      </div>
+      <div class="lg:col-span-6 space-y-6">
+        <div class="h-6 bg-slate-200 rounded w-1/4"></div>
+        <div class="h-10 bg-slate-200 rounded w-3/4 flex-grow"></div>
+        <div class="h-6 bg-slate-200 rounded w-1/3"></div>
+        <div class="h-24 bg-slate-200 rounded w-full"></div>
+        <div class="h-12 bg-slate-200 rounded w-1/2"></div>
+      </div>
+    </div>
+  </div>
+
+  
+  <div v-else-if="errorMsg" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
+    <div class="bg-red-50 border border-red-100 rounded-2xl p-8 max-w-lg mx-auto">
+      <p class="text-red-800 text-sm font-semibold mb-4">{{ errorMsg }}</p>
+      <button 
+        @click="fetchProductDetail" 
+        class="bg-brand-accent hover:bg-brand-accentHover text-white px-6 py-2 rounded-full text-xs font-bold transition-all shadow"
+      >
+        Thử lại
+      </button>
+    </div>
+  </div>
+
+  <div v-else-if="product" class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
     <!-- Success Alert Notification -->
     <div 
       v-if="showSuccessNotification" 
@@ -172,7 +258,7 @@ const handleBuyNow = () => {
         <!-- Main Image -->
         <div class="aspect-square bg-slate-50 border border-slate-100 rounded-2xl overflow-hidden shadow-sm relative group">
           <img 
-            :src="galleryImages[activeImageIndex] || selectedColor.images[0]?.image_url" 
+            :src="galleryImages[activeImageIndex] || selectedColor?.images?.[0]?.image_url || '/placeholder_image.png'" 
             :alt="product.product_name" 
             class="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
           />
@@ -187,7 +273,7 @@ const handleBuyNow = () => {
             class="aspect-square rounded-xl bg-slate-50 border overflow-hidden transition-all"
             :class="activeImageIndex === idx ? 'border-brand-blue ring-2 ring-brand-blue ring-offset-2' : 'border-slate-200 opacity-70 hover:opacity-100'"
           >
-            <img :src="img" :alt="product.product_name" class="w-full h-full object-cover object-center" />
+            <img :src="img || '/placeholder_image.png'" :alt="product.product_name" class="w-full h-full object-cover object-center" />
           </button>
         </div>
       </div>
@@ -197,7 +283,7 @@ const handleBuyNow = () => {
         <div>
           <!-- Brand -->
           <span class="inline-block bg-slate-100 text-slate-700 text-xs font-extrabold px-3 py-1 rounded uppercase tracking-wider mb-2">
-            {{ product.brand_name }}
+            {{ product.brand?.brand_name || 'MyShoes' }}
           </span>
 
           <!-- Name -->
@@ -208,15 +294,15 @@ const handleBuyNow = () => {
           <!-- Reviews & Stars -->
           <div class="flex items-center space-x-3 mt-3">
             <div class="flex items-center text-amber-400">
-              <svg v-for="i in 5" :key="i" class="h-4 w-4" :class="i <= Math.round(product.rating) ? 'fill-current' : 'text-slate-200 stroke-current'" viewBox="0 0 20 20">
+              <svg v-for="i in 5" :key="i" class="h-4 w-4" :class="i <= Math.round(product.rating || 5) ? 'fill-current' : 'text-slate-200 stroke-current'" viewBox="0 0 20 20">
                 <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
               </svg>
             </div>
-            <span class="text-sm font-semibold text-slate-400">({{ product.reviewsCount }} đánh giá thực tế)</span>
+            <span class="text-sm font-semibold text-slate-400">({{ product.reviewsCount || 120 }} đánh giá thực tế)</span>
           </div>
 
           <!-- Price section -->
-          <div class="mt-6 bg-slate-50 p-5 rounded-2xl border border-slate-100 flex flex-wrap items-center justify-between gap-4">
+          <div v-if="selectedColor" class="mt-6 bg-slate-50 p-5 rounded-2xl border border-slate-100 flex flex-wrap items-center justify-between gap-4">
             <div>
               <p class="text-sm text-slate-500 font-semibold mb-1">Giá bán ưu đãi:</p>
               <div class="flex items-baseline space-x-3">
@@ -227,6 +313,9 @@ const handleBuyNow = () => {
             <span v-if="hasDiscount" class="bg-brand-accent text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">
               TIẾT KIỆM {{ discountPercentage }}%
             </span>
+          </div>
+          <div v-else class="mt-6 bg-slate-100 p-5 rounded-2xl border border-slate-200 text-slate-400 text-sm font-semibold">
+            Sản phẩm chưa có thông tin màu sắc / giá.
           </div>
 
           <!-- Highlights short details badges -->
@@ -272,7 +361,7 @@ const handleBuyNow = () => {
             
             <div class="grid grid-cols-6 gap-2.5">
               <button 
-                v-for="sku in selectedColor.skus" 
+                v-for="sku in (selectedColor?.skus || [])" 
                 :key="sku.sku_id"
                 :disabled="sku.status !== 'active' || sku.stock_quantity <= 0"
                 @click="selectedSku = sku; showSizeWarning = false; errorMessage = ''"
@@ -382,7 +471,7 @@ const handleBuyNow = () => {
               :key="idx" 
               class="aspect-video w-full rounded-2xl overflow-hidden bg-slate-50 border border-slate-100"
             >
-              <img :src="img" :alt="product.product_name" class="w-full h-full object-cover object-center" />
+              <img :src="img || '/placeholder_image.png'" :alt="product.product_name" class="w-full h-full object-cover object-center" />
             </div>
           </div>
         </div>
@@ -415,5 +504,7 @@ const handleBuyNow = () => {
   <div v-else class="max-w-7xl mx-auto px-4 py-32 text-center">
     <h2 class="text-2xl font-bold text-slate-800">Không tìm thấy giày yêu cầu hoặc sản phẩm không khả dụng</h2>
     <router-link to="/products" class="mt-4 inline-block bg-brand-blue text-white px-6 py-2.5 rounded-full">Quay lại danh sách</router-link>
-  </div>
+  </div> 
+
+
 </template>

@@ -86,8 +86,8 @@ const handleAddVoucher = () => {
   alert('Đã thêm voucher khuyến mãi thành công.');
 };
 
-const toggleVoucherStatus = (vId: string) => {
-  const idx = vouchers.value.findIndex(v => v.voucher_id === vId);
+const toggleVoucherStatus = (vId: any) => {
+  const idx = vouchers.value.findIndex(v => String(v.voucher_id) === String(vId));
   if (idx === -1) return;
   
   const v = vouchers.value[idx];

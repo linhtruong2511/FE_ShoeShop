@@ -35,7 +35,7 @@ const completedOrdersCount = computed(() => orders.value.filter(o => o.order_sta
 const itemsSold = computed(() => {
   return orders.value
     .filter(o => o.order_status === 'completed')
-    .reduce((sum, o) => sum + o.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
+    .reduce((sum, o) => sum + o.details.reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
 });
 
 // Low stock warnings (under 5 items)
@@ -86,7 +86,7 @@ const bestSellers = computed(() => {
         orders.value
           .filter(o => o.order_status === 'completed')
           .forEach(o => {
-            o.items.forEach(d => {
+            o.details.forEach(d => {
               if (d.sku_id === s.sku_id) {
                 orderSold += d.quantity;
               }
