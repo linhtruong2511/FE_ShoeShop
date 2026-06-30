@@ -351,13 +351,6 @@ onUnmounted(() => {
         >
           Đơn hàng của tôi
         </router-link>
-        <router-link 
-          to="/admin" 
-          @click="isMobileMenuOpen = false" 
-          class="block px-3 py-2.5 rounded-md text-base font-medium hover:bg-slate-900 hover:text-brand-accent transition-colors text-brand-accent"
-        >
-          Quản trị
-        </router-link>
 
         <!-- User Actions (Mobile) -->
         <div class="border-t border-slate-900 mt-4 pt-4 pb-2 px-3">

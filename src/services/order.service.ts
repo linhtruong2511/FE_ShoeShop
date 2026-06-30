@@ -5,6 +5,7 @@ export interface CreateOrderRequest {
   receiver_phone: string;
   shipping_address: string;
   payment_method: 'cod' | 'bank_transfer';
+  shipping_method?: 'standard' | 'express';
   note?: string;
   voucher_code?: string;
 }

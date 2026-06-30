@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useCartStore, getDiscountedPrice } from '../stores/cart';
 import { orderService } from '../services/order.service';
+import { voucherService } from '../services/voucher.service';
 
 const router = useRouter();
 const cartStore = useCartStore();
@@ -13,17 +14,41 @@ const receiverPhone = ref('');
 const shippingAddress = ref('');
 const note = ref('');
 const paymentMethod = ref<'cod' | 'bank_transfer'>('cod');
-const shippingMethod = ref<'standard' | 'fast'>('standard');
+const shippingMethod = ref<'standard' | 'express'>('standard');
 const voucherInput = ref('');
 
 const voucherError = ref('');
 const voucherSuccess = ref('');
 const orderError = ref('');
 
+const activeVouchers = ref<any[]>([]);
+const appliedVoucher = ref<any | null>(null);
+
 onMounted(async () => {
   await cartStore.loadCart();
   if (cartStore.items.length === 0) {
     router.push('/products');
+  } else {
+    await cartStore.getCheckoutPreview();
+    if (cartStore.appliedVoucherCode) {
+      voucherInput.value = cartStore.appliedVoucherCode;
+      try {
+        const res = await voucherService.getVoucherByCode(cartStore.appliedVoucherCode);
+        if (res.success && res.data) {
+          appliedVoucher.value = res.data;
+        }
+      } catch (e) {
+        console.error('Failed to load initially applied voucher:', e);
+      }
+    }
+  }
+  try {
+    const vouchersRes = await voucherService.getActiveVouchers(1, 100);
+    if (vouchersRes.success && vouchersRes.data) {
+      activeVouchers.value = vouchersRes.data;
+    }
+  } catch (err) {
+    console.error('Failed to load active vouchers:', err);
   }
 });
 
@@ -33,43 +58,119 @@ const formatPrice = (value: number) => {
 
 // Calculate shipping fee from preview
 const shippingFee = computed(() => {
-  return cartStore.checkoutPreviewData?.shipping_fee ?? 30000;
+  if (cartStore.checkoutPreviewData && cartStore.checkoutPreviewData.shipping_fee === 0) {
+    return 0;
+  }
+  return shippingMethod.value === 'express' ? 50000 : 30000;
 });
 
-// Calculate final total from preview
+// Calculate voucher discount dynamically on frontend
+const voucherDiscount = computed(() => {
+  if (!appliedVoucher.value) return 0;
+  const voucher = appliedVoucher.value;
+  const subtotal = cartStore.subtotal;
+  
+  if (subtotal < Number(voucher.min_order_amount)) {
+    return 0;
+  }
+  
+  let discount = 0;
+  if (voucher.discount_type === 'percent') {
+    discount = subtotal * (Number(voucher.discount_value) / 100);
+    if (voucher.max_discount !== null && voucher.max_discount !== undefined) {
+      discount = Math.min(discount, Number(voucher.max_discount));
+    }
+  } else {
+    discount = Number(voucher.discount_value);
+  }
+  
+  return Math.min(discount, subtotal);
+});
+
+// Calculate final total from subtotal, shipping fee, and voucher discount
 const totalAmount = computed(() => {
-  return cartStore.checkoutPreviewData?.total ?? (cartStore.subtotal + shippingFee.value);
+  return cartStore.subtotal + shippingFee.value - voucherDiscount.value;
+});
+
+// Calculate total original subtotal before item discounts
+const originalSubtotal = computed(() => {
+  return cartStore.items.reduce((sum, item) => {
+    return sum + (Number(item.selectedColor.price) * item.quantity);
+  }, 0);
+});
+
+// Calculate total savings (item discount + voucher discount)
+const totalSavings = computed(() => {
+  const itemSavings = originalSubtotal.value - cartStore.subtotal;
+  return itemSavings + voucherDiscount.value;
 });
 
 // Available vouchers to apply (display to user for convenience)
 const availableVouchers = computed(() => {
-  return [
-    { voucher_id: 1, code: 'SALE10', voucher_type: 'percent', discount_value: 10, min_order_amount: 100000, description: 'Giảm 10% đơn từ 100k' },
-    { voucher_id: 2, code: 'FREESHIP', voucher_type: 'free_shipping', discount_value: 30000, min_order_amount: 0, description: 'Miễn phí vận chuyển' }
-  ];
+  return activeVouchers.value.map(v => ({
+    ...v,
+    code: v.voucher_code,
+    voucher_type: v.discount_type
+  }));
 });
 
 // Apply voucher logic
 const handleApplyVoucher = async (code: string) => {
   voucherError.value = '';
   voucherSuccess.value = '';
+  appliedVoucher.value = null;
   
   if (!code.trim()) {
     voucherError.value = 'Vui lòng nhập mã giảm giá!';
     return;
   }
   
-  const result = await cartStore.applyVoucher(code.trim());
-  if (result.success) {
-    voucherSuccess.value = result.message;
-    voucherInput.value = '';
-  } else {
-    voucherError.value = result.message;
+  const formattedCode = code.trim().toUpperCase();
+  voucherInput.value = formattedCode;
+  
+  try {
+    const res = await voucherService.getVoucherByCode(formattedCode);
+    if (res.success && res.data) {
+      const voucher = res.data;
+      
+      // Validation checks
+      if (voucher.status === 'paused') {
+        voucherError.value = 'Mã giảm giá đã bị tạm ngưng sử dụng!';
+        return;
+      }
+      if (voucher.status === 'expired') {
+        voucherError.value = 'Mã giảm giá đã hết hạn sử dụng!';
+        return;
+      }
+      if (voucher.status !== 'active' && voucher.status !== 'hidden') {
+        voucherError.value = 'Mã giảm giá không khả dụng!';
+        return;
+      }
+      
+      // Min order amount check
+      if (cartStore.subtotal < Number(voucher.min_order_amount)) {
+        voucherError.value = `Đơn hàng chưa đạt giá trị tối thiểu ${formatPrice(Number(voucher.min_order_amount))} để áp dụng mã này!`;
+        return;
+      }
+      
+      // Save it locally
+      appliedVoucher.value = voucher;
+      voucherSuccess.value = `Áp dụng mã giảm giá ${formattedCode} thành công!`;
+      
+      // Synchronize with backend cart
+      await cartStore.applyVoucher(formattedCode);
+    } else {
+      voucherError.value = 'Mã giảm giá không hợp lệ.';
+    }
+  } catch (err: any) {
+    voucherError.value = err.response?.data?.detail || 'Mã giảm giá không tồn tại!';
   }
 };
 
 const handleRemoveVoucher = async () => {
   await cartStore.removeVoucher();
+  appliedVoucher.value = null;
+  voucherInput.value = '';
   voucherSuccess.value = '';
   voucherError.value = '';
 };
@@ -101,13 +202,14 @@ const handlePlaceOrder = async () => {
   isLoadingOrder.value = true;
   
   try {
-    const orderData = {
+    const orderData: any = {
       receiver_name: receiverName.value.trim(),
       receiver_phone: receiverPhone.value.trim(),
       shipping_address: shippingAddress.value.trim(),
+      shipping_method: shippingMethod.value,
       note: note.value.trim() || undefined,
       payment_method: paymentMethod.value,
-      voucher_code: cartStore.appliedVoucherCode || undefined,
+      voucher_code: appliedVoucher.value?.voucher_code || undefined,
     };
 
     const res = await orderService.createOrder(orderData);
@@ -186,7 +288,7 @@ const handlePlaceOrder = async () => {
                   class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:border-brand-blue cursor-pointer"
                 >
                   <option value="standard">Giao hàng tiêu chuẩn (3-5 ngày) - {{ formatPrice(30000) }}</option>
-                  <option value="fast">Giao hàng nhanh (1-2 ngày) - {{ formatPrice(50000) }}</option>
+                  <option value="express">Giao hàng nhanh (1-2 ngày) - {{ formatPrice(50000) }}</option>
                 </select>
               </div>
             </div>
@@ -361,13 +463,17 @@ const handlePlaceOrder = async () => {
               <span>Tạm tính hàng hóa:</span>
               <span class="font-bold text-slate-800">{{ formatPrice(cartStore.subtotal) }}</span>
             </div>
-            <div class="flex justify-between" v-if="cartStore.voucherDiscount > 0">
+            <div class="flex justify-between" v-if="voucherDiscount > 0">
               <span>Giảm giá Voucher:</span>
-              <span class="font-bold text-brand-accent">-{{ formatPrice(cartStore.voucherDiscount) }}</span>
+              <span class="font-bold text-brand-accent">-{{ formatPrice(voucherDiscount) }}</span>
             </div>
             <div class="flex justify-between">
               <span>Phí vận chuyển:</span>
               <span class="font-bold text-slate-800">{{ formatPrice(shippingFee) }}</span>
+            </div>
+            <div class="flex justify-between text-emerald-600 font-bold" v-if="totalSavings > 0">
+              <span>Tiết kiệm được:</span>
+              <span>-{{ formatPrice(totalSavings) }}</span>
             </div>
             <div class="flex justify-between border-t border-slate-100 pt-4 text-base font-extrabold text-slate-900">
               <span>Tổng thanh toán:</span>

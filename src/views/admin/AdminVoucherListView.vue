@@ -19,6 +19,7 @@ const newLimit = ref<number | undefined>(100);
 const newMaxPerCustomer = ref(1);
 const newStartDate = ref('2026-07-01');
 const newEndDate = ref('2026-07-31');
+const newStatus = ref<'active' | 'hidden' | 'paused'>('active');
 
 onMounted(() => {
   loadVouchers();
@@ -83,13 +84,14 @@ const handleAddVoucher = async () => {
       max_usage_per_customer: newMaxPerCustomer.value,
       start_date: new Date(newStartDate.value).toISOString(),
       end_date: new Date(newEndDate.value).toISOString(),
-      status: 'active'
+      status: newStatus.value
     };
 
     const res = await adminVoucherService.createVoucher(data);
     if (res.success) {
       alert('Đã thêm voucher khuyến mãi thành công.');
       newCode.value = '';
+      newStatus.value = 'active';
       showAddModal.value = false;
       loadVouchers();
     } else {
@@ -100,35 +102,17 @@ const handleAddVoucher = async () => {
   }
 };
 
-const confirmState = ref({
-  show: false,
-  title: 'Xác nhận',
-  message: '',
-  onConfirm: () => {}
-});
-
-const toggleVoucherStatus = async (vId: number, currentStatus: string) => {
-  const nextStatus = currentStatus === 'active' ? 'paused' : 'active';
-  const actionName = currentStatus === 'active' ? 'tạm dừng' : 'kích hoạt';
-  
-  confirmState.value = {
-    show: true,
-    title: 'Xác nhận trạng thái',
-    message: `Bạn có chắc chắn muốn ${actionName} voucher này?`,
-    onConfirm: async () => {
-      confirmState.value.show = false;
-      try {
-        const res = await adminVoucherService.updateStatus(vId, nextStatus);
-        if (res.success) {
-          loadVouchers();
-        } else {
-          alert('Không thể cập nhật trạng thái');
-        }
-      } catch (err: any) {
-        alert(err.response?.data?.detail || err.message || 'Lỗi cập nhật');
-      }
+const updateVoucherStatusDirect = async (vId: number, nextStatus: string) => {
+  try {
+    const res = await adminVoucherService.updateStatus(vId, nextStatus);
+    if (res.success) {
+      loadVouchers();
+    } else {
+      alert('Không thể cập nhật trạng thái');
     }
-  };
+  } catch (err: any) {
+    alert(err.response?.data?.detail || err.message || 'Lỗi cập nhật');
+  }
 };
 </script>
 
@@ -165,8 +149,7 @@ const toggleVoucherStatus = async (vId: number, currentStatus: string) => {
               <th class="py-4 px-4">Đơn tối thiểu</th>
               <th class="py-4 px-4">Đã dùng / Giới hạn</th>
               <th class="py-4 px-4">Thời hạn hiệu lực</th>
-              <th class="py-4 px-4">Trạng thái</th>
-              <th class="py-4 px-6 text-center">Hành động</th>
+              <th class="py-4 px-6 text-center">Trạng thái (Status)</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 text-slate-700 font-medium">
@@ -190,28 +173,25 @@ const toggleVoucherStatus = async (vId: number, currentStatus: string) => {
                 <div>Từ: {{ new Date(v.start_date).toLocaleDateString('vi-VN') }}</div>
                 <div class="mt-0.5">Đến: {{ new Date(v.end_date).toLocaleDateString('vi-VN') }}</div>
               </td>
-              <td class="py-4 px-4">
-                <span 
-                  class="px-2 py-0.5 rounded text-[10px] font-bold"
-                  :class="v.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'"
+              <td class="py-4 px-6 text-center">
+                <select 
+                  :value="v.status" 
+                  @change="updateVoucherStatusDirect(v.voucher_id as number, ($event.target as HTMLSelectElement).value)"
+                  class="border rounded-xl px-3 py-1.5 text-xs bg-white font-bold cursor-pointer outline-none transition-all shadow-sm"
+                  :class="{
+                    'text-emerald-700 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50': v.status === 'active',
+                    'text-slate-500 border-slate-200 bg-slate-50 hover:bg-slate-100': v.status === 'hidden',
+                    'text-amber-700 border-amber-200 bg-amber-50/50 hover:bg-amber-50': v.status === 'paused'
+                  }"
                 >
-                  {{ v.status === 'active' ? 'Hoạt động' : 'Tạm dừng' }}
-                </span>
-              </td>
-              <td class="py-4 px-6">
-                <div class="flex justify-center">
-                  <button 
-                    @click="toggleVoucherStatus(v.voucher_id as number, v.status)"
-                    class="border font-bold text-[10px] px-3 py-1.5 rounded-lg transition-all"
-                    :class="v.status === 'active' ? 'border-rose-200 text-rose-600 hover:bg-rose-50' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'"
-                  >
-                    {{ v.status === 'active' ? 'Tạm dừng' : 'Kích hoạt' }}
-                  </button>
-                </div>
+                  <option value="active">Hiển thị (Active)</option>
+                  <option value="hidden">Ẩn (Hidden)</option>
+                  <option value="paused">Dừng (Paused)</option>
+                </select>
               </td>
             </tr>
             <tr v-if="vouchers.length === 0">
-              <td colspan="8" class="text-center py-8 text-slate-400">Không tìm thấy voucher khuyến mãi nào.</td>
+              <td colspan="7" class="text-center py-8 text-slate-400">Không tìm thấy voucher khuyến mãi nào.</td>
             </tr>
           </tbody>
         </table>
@@ -258,7 +238,7 @@ const toggleVoucherStatus = async (vId: number, currentStatus: string) => {
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-3 gap-3">
             <div>
               <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Ngày bắt đầu</label>
               <input type="date" v-model="newStartDate" class="w-full border rounded-xl px-3 py-2 text-xs" />
@@ -266,6 +246,14 @@ const toggleVoucherStatus = async (vId: number, currentStatus: string) => {
             <div>
               <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Ngày kết thúc</label>
               <input type="date" v-model="newEndDate" class="w-full border rounded-xl px-3 py-2 text-xs" />
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Trạng thái</label>
+              <select v-model="newStatus" class="w-full border rounded-xl px-3 py-2 text-xs bg-white">
+                <option value="active">Hiển thị (Active)</option>
+                <option value="hidden">Ẩn (Hidden)</option>
+                <option value="paused">Dừng (Paused)</option>
+              </select>
             </div>
           </div>
         </div>
@@ -275,13 +263,5 @@ const toggleVoucherStatus = async (vId: number, currentStatus: string) => {
           <button @click="handleAddVoucher" class="flex-1 bg-slate-900 text-white font-bold text-xs py-2.5 rounded-xl">Tạo Voucher</button>
         </div>
     </BaseModal>
-    
-    <ConfirmDialog 
-      :show="confirmState.show" 
-      :title="confirmState.title" 
-      :message="confirmState.message" 
-      @confirm="confirmState.onConfirm" 
-      @cancel="confirmState.show = false" 
-    />
   </div>
 </template>

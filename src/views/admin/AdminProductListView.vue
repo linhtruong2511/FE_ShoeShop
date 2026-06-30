@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { adminProductService } from '../../services/admin/product.service';
 import { brandService } from '../../services/brand.service';
 import { categoryService } from '../../services/category.service';
@@ -219,6 +219,27 @@ const loadProducts = async () => {
   }
 };
 
+const handleFilterChange = () => {
+  productPage.value = 1;
+  loadProducts();
+};
+
+let debounceTimeout: any = null;
+const handleSearchInput = () => {
+  if (debounceTimeout) {
+    clearTimeout(debounceTimeout);
+  }
+  debounceTimeout = setTimeout(() => {
+    handleFilterChange();
+  }, 1000);
+};
+
+onUnmounted(() => {
+  if (debounceTimeout) {
+    clearTimeout(debounceTimeout);
+  }
+});
+
 const formatPrice = (value: number) => {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
 };
@@ -306,6 +327,28 @@ const handleDeleteProduct = async () => {
     }
   } catch (err: any) {
     alert(err.response?.data?.detail || err.message || 'Lỗi xóa sản phẩm');
+  }
+};
+
+// Toggle product status (active/hidden)
+const toggleProductStatus = async () => {
+  if (!selectedProduct.value) return;
+  const newStatus = selectedProduct.value.status === 'active' ? 'hidden' : 'active';
+  const actionText = newStatus === 'active' ? 'hiển thị' : 'ẩn';
+  
+  if (!confirm(`Bạn có chắc chắn muốn ${actionText} sản phẩm "${selectedProduct.value.product_name}" không?`)) {
+    return;
+  }
+  
+  try {
+    const res = await adminProductService.updateProductStatus(selectedProduct.value.product_id as number, newStatus);
+    if (res.success) {
+      alert(`Đã cập nhật trạng thái sản phẩm sang: ${newStatus === 'active' ? 'Đang hoạt động' : 'Đang ẩn'}`);
+      selectedProduct.value.status = newStatus;
+      await loadProducts();
+    }
+  } catch (err: any) {
+    alert(err.response?.data?.detail || err.message || 'Lỗi cập nhật trạng thái sản phẩm');
   }
 };
 
@@ -569,21 +612,20 @@ const openAdjustModal = (sku: ProductSku) => {
           <!-- Keyword -->
           <div>
             <label class="block text-[9px] font-bold text-slate-400 uppercase mb-1">Từ khóa</label>
-            <div class="flex gap-1.5">
+            <div class="relative">
               <input 
                 type="text" 
                 v-model="productSearch" 
+                @input="handleSearchInput"
                 placeholder="Tên/Mã SP..." 
-                class="flex-1 border rounded-xl px-3 py-1.5 text-xs bg-white"
-                @keyup.enter="loadProducts"
+                class="w-full border rounded-xl px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-brand-blue"
               />
-              <button @click="loadProducts" class="bg-slate-900 text-white px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-black">Tìm</button>
             </div>
           </div>
           <!-- Brand -->
           <div>
             <label class="block text-[9px] font-bold text-slate-400 uppercase mb-1">Thương hiệu</label>
-            <select v-model="filterBrandId" class="w-full border rounded-xl px-3 py-1.5 text-xs bg-white" @change="loadProducts">
+            <select v-model="filterBrandId" class="w-full border rounded-xl px-3 py-1.5 text-xs bg-white" @change="handleFilterChange">
               <option value="">Tất cả thương hiệu</option>
               <option v-for="b in brands" :key="b.brand_id" :value="b.brand_id">{{ b.brand_name }}</option>
             </select>
@@ -591,7 +633,7 @@ const openAdjustModal = (sku: ProductSku) => {
           <!-- Category -->
           <div>
             <label class="block text-[9px] font-bold text-slate-400 uppercase mb-1">Danh mục</label>
-            <select v-model="filterCategoryId" class="w-full border rounded-xl px-3 py-1.5 text-xs bg-white" @change="loadProducts">
+            <select v-model="filterCategoryId" class="w-full border rounded-xl px-3 py-1.5 text-xs bg-white" @change="handleFilterChange">
               <option value="">Tất cả danh mục</option>
               <option v-for="c in categories" :key="c.category_id" :value="c.category_id">{{ c.category_name }}</option>
             </select>
@@ -599,7 +641,7 @@ const openAdjustModal = (sku: ProductSku) => {
           <!-- Gender Target -->
           <div>
             <label class="block text-[9px] font-bold text-slate-400 uppercase mb-1">Đối tượng</label>
-            <select v-model="filterGender" class="w-full border rounded-xl px-3 py-1.5 text-xs bg-white" @change="loadProducts">
+            <select v-model="filterGender" class="w-full border rounded-xl px-3 py-1.5 text-xs bg-white" @change="handleFilterChange">
               <option value="">Tất cả đối tượng</option>
               <option value="unisex">Unisex</option>
               <option value="men">Nam</option>
@@ -610,7 +652,7 @@ const openAdjustModal = (sku: ProductSku) => {
           <!-- Status -->
           <div>
             <label class="block text-[9px] font-bold text-slate-400 uppercase mb-1">Trạng thái</label>
-            <select v-model="productFilter" class="w-full border rounded-xl px-3 py-1.5 text-xs bg-white" @change="loadProducts">
+            <select v-model="productFilter" class="w-full border rounded-xl px-3 py-1.5 text-xs bg-white" @change="handleFilterChange">
               <option value="all">Tất cả trạng thái</option>
               <option value="active">Đang hoạt động</option>
               <option value="hidden">Đang ẩn</option>
@@ -677,8 +719,17 @@ const openAdjustModal = (sku: ProductSku) => {
             <p class="text-xs text-slate-500 mt-1">Code: <span class="font-mono">{{ selectedProduct?.product_code }}</span> | Phân loại: <span class="uppercase font-bold">{{ selectedProduct?.gender_target }}</span></p>
           </div>
           <div class="flex items-center space-x-3">
-            <button @click="openEditProductModal" class="text-brand-blue font-bold text-xs hover:underline bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 transition-colors">Sửa SP</button>
-            <button @click="handleDeleteProduct" class="text-rose-600 font-bold text-xs hover:underline bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-100 transition-colors">Xóa SP</button>
+            <button @click="openEditProductModal" class="text-brand-blue font-bold text-xs bg-blue-50 px-3 py-1.5 rounded-xl border border-blue-100 transition-colors cursor-pointer">Sửa SP</button>
+            <button 
+              @click="toggleProductStatus" 
+              class="font-bold text-xs px-3 py-1.5 rounded-xl border transition-colors cursor-pointer"
+              :class="selectedProduct?.status === 'active' 
+                ? 'text-amber-600 bg-amber-50 border-amber-100' 
+                : 'text-emerald-600 bg-emerald-50 border-emerald-100'"
+            >
+              {{ selectedProduct?.status === 'active' ? 'Ẩn sản phẩm' : 'Hiện sản phẩm' }}
+            </button>
+            <button @click="handleDeleteProduct" class="text-rose-600 font-bold text-xs bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-100 transition-colors cursor-pointer">Xóa SP</button>
             <div class="w-px h-6 bg-slate-200 mx-1"></div>
             <button @click="closeDrawer" class="text-slate-400 hover:text-slate-700 bg-white rounded-full p-2 border shadow-sm transition-all hover:scale-105">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>

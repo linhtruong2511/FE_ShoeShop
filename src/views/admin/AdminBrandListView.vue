@@ -155,7 +155,7 @@ const confirmToggleStatus = (brand: any) => {
     message: `Bạn có chắc muốn ${action} thương hiệu "${brand.brand_name}"?`,
     onConfirm: async () => {
       confirmState.value.show = false;
-      const nextStatus = brand.status === 'active' ? 'inactive' : 'active';
+      const nextStatus = brand.status === 'active' ? 'hidden' : 'active';
       try {
         await adminBrandService.toggleBrandStatus(brand.brand_id, nextStatus);
         loadBrands();

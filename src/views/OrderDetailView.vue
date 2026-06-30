@@ -234,6 +234,7 @@ const submitReturnRequest = async () => {
           <p class="text-slate-800">Họ và tên: <strong class="text-slate-900">{{ order.receiver_name }}</strong></p>
           <p class="text-slate-800">Số điện thoại: <strong class="text-slate-900">{{ order.receiver_phone }}</strong></p>
           <p class="text-slate-800">Địa chỉ nhận hàng: <span class="text-slate-900 font-medium">{{ order.shipping_address }}</span></p>
+          <p class="text-slate-800">Phương thức giao hàng: <strong class="text-slate-900">{{ order.shipping_method === 'express' ? 'Giao hàng nhanh (1-2 ngày)' : 'Giao hàng tiêu chuẩn (3-5 ngày)' }}</strong></p>
           <p class="text-slate-800" v-if="order.note">Ghi chú giao nhận: <span class="text-slate-500 italic">"{{ order.note }}"</span></p>
         </div>
         

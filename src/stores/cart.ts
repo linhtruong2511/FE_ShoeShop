@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import type { CartItem, Product, ProductColor, ProductSku } from '../types';
 import { cartService } from '../services/cart.service';
+import { voucherService } from '../services/voucher.service';
 
 export const getDiscountedPrice = (color: any): number => {
   if (!color) return 0;
@@ -149,9 +150,26 @@ export const useCartStore = defineStore('cart', {
 
     async applyVoucher(code: string): Promise<{ success: boolean; message: string }> {
       try {
+        // 1. Get voucher by code to check status first
+        const voucherRes = await voucherService.getVoucherByCode(code);
+        if (voucherRes.success && voucherRes.data) {
+          const voucher = voucherRes.data;
+          if (voucher.status === 'paused') {
+            return { success: false, message: 'Mã giảm giá đã bị tạm ngưng sử dụng!' };
+          }
+          if (voucher.status === 'expired') {
+            return { success: false, message: 'Mã giảm giá đã hết hạn sử dụng!' };
+          }
+          if (voucher.status !== 'active' && voucher.status !== 'hidden') {
+            return { success: false, message: 'Mã giảm giá không khả dụng!' };
+          }
+        }
+        
+        // 2. Apply it if status is valid (active or hidden)
         const res = await cartService.applyVoucher(code);
         if (res.success) {
           await this.fetchCart();
+          await this.getCheckoutPreview();
           return { success: true, message: `Áp dụng mã giảm giá ${code} thành công!` };
         }
         return { success: false, message: res.message || 'Mã giảm giá không hợp lệ.' };
@@ -166,6 +184,7 @@ export const useCartStore = defineStore('cart', {
         const res = await cartService.removeVoucher();
         if (res.success) {
           await this.fetchCart();
+          await this.getCheckoutPreview();
         }
       } catch (err) {
         console.error('Remove voucher error:', err);
