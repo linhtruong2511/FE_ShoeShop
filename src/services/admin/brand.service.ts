@@ -14,7 +14,18 @@ export const adminBrandService = {
     return res.data;
   },
   async toggleBrandStatus(id: number, status: string) {
-    const res = await api.patch(`/admin/brands/${id}/status`, { status });
+    const res = await api.patch(`/admin/brands/${id}/status?status=${status}`);
+    return res.data;
+  },
+  async uploadLogo(id: number, file: File) {
+    const formData = new FormData();
+    formData.append('logo_file', file);
+    const res = await api.patch(`/admin/brands/${id}/upload-logo`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
     return res.data;
   }
 };
+

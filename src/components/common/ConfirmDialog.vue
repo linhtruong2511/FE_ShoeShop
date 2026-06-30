@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import BaseModal from './BaseModal.vue';
 
-defineProps<{
+const props = defineProps<{
   show: boolean;
   title?: string;
   message: string;

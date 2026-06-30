@@ -3,11 +3,12 @@ import { ref, onMounted } from 'vue';
 import { adminUserService } from '@/services/admin/user.service';
 import { adminCustomerService } from '@/services/admin/customer.service';
 import type { AdminUser, AdminCustomer, AdminUserCreate } from '@/types';
-import { useAuthStore } from '@/stores/auth';
+import { useAdminAuthStore } from '@/stores/adminAuth';
 import Pagination from '@/components/common/Pagination.vue';
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
 
-const authStore = useAuthStore();
+const adminAuthStore = useAdminAuthStore();
+
 const activeTab = ref<'staff' | 'customer'>('staff');
 
 // Staff State
@@ -163,7 +164,7 @@ onMounted(() => {
         <p class="text-slate-500 mt-1">Quản lý tài khoản nhân viên và khách hàng</p>
       </div>
       <button 
-        v-if="activeTab === 'staff' && authStore.isAdmin"
+        v-if="activeTab === 'staff' && adminAuthStore.isAdmin"
         @click="showCreateModal = true"
         class="bg-brand-accent text-white px-4 py-2 rounded-lg font-bold shadow-premium hover:shadow-premium-hover hover:-translate-y-0.5 transition-all"
       >
@@ -247,7 +248,7 @@ onMounted(() => {
               </td>
               <td class="px-6 py-4">
                 <button 
-                  v-if="authStore.isAdmin"
+                  v-if="adminAuthStore.isAdmin"
                   @click="confirmToggleStaff(user)" 
                   class="text-xs font-bold px-3 py-1 rounded bg-slate-200 hover:bg-slate-300"
                 >
@@ -317,7 +318,7 @@ onMounted(() => {
               <td class="px-6 py-4 text-slate-500">{{ new Date(c.created_at).toLocaleDateString('vi-VN') }}</td>
               <td class="px-6 py-4">
                 <button 
-                  v-if="authStore.isAdmin"
+                  v-if="adminAuthStore.isAdmin"
                   @click="confirmToggleCustomer(c)" 
                   class="text-xs font-bold px-3 py-1 rounded bg-slate-200 hover:bg-slate-300"
                 >

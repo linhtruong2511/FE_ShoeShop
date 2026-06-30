@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import type { RouteRecordRaw } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 import { useAuthStore } from '../stores/auth';
+import { useAdminAuthStore } from '../stores/adminAuth';
 
 const routes: RouteRecordRaw[] = [
   {
@@ -128,6 +129,7 @@ const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore();
+  const adminAuthStore = useAdminAuthStore();
 
   // Check customer auth
   if (to.matched.some(record => record.meta.requiresCustomerAuth) && !authStore.isCustomer) {
@@ -135,11 +137,11 @@ router.beforeEach((to, _from, next) => {
   }
 
   // Check admin/staff auth
-  if (to.matched.some(record => record.meta.requiresStaffAuth) && !authStore.isStaff) {
+  if (to.matched.some(record => record.meta.requiresStaffAuth) && !adminAuthStore.isStaff) {
     return next({ path: '/admin/login' });
   }
 
-  if (to.matched.some(record => record.meta.requiresAdmin) && !authStore.isAdmin) {
+  if (to.matched.some(record => record.meta.requiresAdmin) && !adminAuthStore.isAdmin) {
     return next({ path: '/admin/dashboard' });
   }
 

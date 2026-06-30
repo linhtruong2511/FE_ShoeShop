@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router';
-import { useAuthStore } from '@/stores/auth';
+import { useAdminAuthStore } from '@/stores/adminAuth';
 
 const router = useRouter();
 const route = useRoute();
-const authStore = useAuthStore();
+const adminAuthStore = useAdminAuthStore();
 
 const adminMenus = [
   { name: 'Dashboard', path: '/admin', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
@@ -27,8 +27,9 @@ const logoutAdmin = () => {
 };
 
 const handleLogout = () => {
+  adminAuthStore.logout();
   showLogoutConfirm.value = false;
-  router.push('/');
+  router.push('/admin/login');
 };
 </script>
 
@@ -52,7 +53,7 @@ const handleLogout = () => {
             v-for="item in adminMenus" 
             :key="item.name" 
             :to="item.path"
-            v-show="(item.name !== 'Người dùng' && item.name !== 'Nhật ký (Audit)') || authStore.isAdmin"
+            v-show="(item.name !== 'Người dùng' && item.name !== 'Nhật ký (Audit)') || adminAuthStore.isAdmin"
             class="flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all uppercase tracking-wider"
             :class="route.path === item.path ? 'bg-brand-accent text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900 hover:text-white'"
           >
@@ -97,11 +98,11 @@ const handleLogout = () => {
         </h2>
         <div class="flex items-center space-x-4">
           <div class="text-right text-xs">
-            <p class="font-extrabold text-slate-900">Admin Account</p>
-            <p class="text-slate-400 mt-0.5">Quyền: Quản trị viên</p>
+            <p class="font-extrabold text-slate-900">{{ adminAuthStore.adminUser?.username || 'Admin Account' }}</p>
+            <p class="text-slate-400 mt-0.5">Quyền: {{ adminAuthStore.adminRole === 'admin' ? 'Quản trị viên' : 'Nhân viên' }}</p>
           </div>
           <span class="h-9 w-9 rounded-full bg-slate-950 flex items-center justify-center text-white text-xs font-black ring-2 ring-brand-accent ring-offset-2">
-            AD
+            {{ adminAuthStore.adminUser?.username?.substring(0, 2).toUpperCase() || 'AD' }}
           </span>
         </div>
       </header>

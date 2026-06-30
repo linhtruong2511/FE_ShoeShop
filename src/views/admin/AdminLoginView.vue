@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuthStore } from '../../stores/auth';
+import { useAdminAuthStore } from '../../stores/adminAuth';
 import { authService } from '../../services/auth.service';
 
 const router = useRouter();
-const authStore = useAuthStore();
+const adminAuthStore = useAdminAuthStore();
 
 const email = ref('');
 const password = ref('');
@@ -29,7 +29,7 @@ const handleLogin = async () => {
     
     if (res.success && res.data) {
       const { access_token, user } = res.data;
-      authStore.login(access_token, user, user.role);
+      adminAuthStore.login(access_token, user, user.role);
       router.push('/admin');
     } else {
       errorMsg.value = res.message || 'Đăng nhập thất bại';
@@ -40,6 +40,7 @@ const handleLogin = async () => {
     isLoading.value = false;
   }
 };
+
 </script>
 
 <template>

@@ -99,7 +99,7 @@ onUnmounted(() => {
       <div class="flex items-center justify-between h-20">
         
         <!-- Logo -->
-        <div class="flex-shrink-0 flex items-center">
+        <div class="shrink-0 flex items-center">
           <router-link to="/" class="flex items-center space-x-1">
             <span class="text-2xl font-black font-sans tracking-wider text-white">SHOE<span class="text-brand-accent">SHOP</span></span>
             <span class="hidden md:inline-block bg-brand-accent text-[9px] uppercase font-bold px-1.5 py-0.5 rounded text-white tracking-widest font-sans ml-2">ORIGINAL</span>
@@ -130,7 +130,6 @@ onUnmounted(() => {
           </div>
 
           <router-link to="/orders" class="hover:text-brand-accent transition-colors duration-200 py-2 text-slate-300">Đơn hàng của tôi</router-link>
-          <router-link to="/admin" class="hover:text-brand-accent transition-colors duration-200 py-2 text-brand-accent">Quản trị</router-link>
         </nav>
 
         <!-- Search Bar & Actions -->

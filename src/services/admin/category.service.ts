@@ -14,7 +14,7 @@ export const adminCategoryService = {
     return res.data;
   },
   async toggleCategoryStatus(id: number, status: string) {
-    const res = await api.patch(`/admin/categories/${id}/status`, { status });
+    const res = await api.patch(`/admin/categories/${id}/status?status=${status}`);
     return res.data;
   }
 };

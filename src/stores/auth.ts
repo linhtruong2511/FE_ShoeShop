@@ -8,12 +8,10 @@ export const useAuthStore = defineStore('auth', {
   }),
   getters: {
     isLoggedIn: (state) => !!state.accessToken,
-    isCustomer: (state) => state.role === 'customer',
-    isStaff: (state) => state.role === 'staff' || state.role === 'admin',
-    isAdmin: (state) => state.role === 'admin',
+    isCustomer: (state) => state.role === 'customer' || !!state.accessToken,
   },
   actions: {
-    login(token: string, user: any, role: string) {
+    login(token: string, user: any, role: string = 'customer') {
       this.accessToken = token;
       this.user = user;
       this.role = role;
@@ -31,3 +29,4 @@ export const useAuthStore = defineStore('auth', {
     }
   }
 });
+

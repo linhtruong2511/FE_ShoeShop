@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '@/stores/auth';
+import { useAdminAuthStore } from '@/stores/adminAuth';
 import router from '@/router';
 
 const api = axios.create({
@@ -9,9 +10,19 @@ const api = axios.create({
 
 // Request interceptor — gắn token
 api.interceptors.request.use((config) => {
-  const authStore = useAuthStore();
-  if (authStore.accessToken) {
-    config.headers.Authorization = `Bearer ${authStore.accessToken}`;
+  const url = config.url || '';
+  const isAdminRequest = url.startsWith('/admin/') || url.startsWith('/auth/admin/');
+
+  if (isAdminRequest) {
+    const adminAuthStore = useAdminAuthStore();
+    if (adminAuthStore.adminAccessToken) {
+      config.headers.Authorization = `Bearer ${adminAuthStore.adminAccessToken}`;
+    }
+  } else {
+    const authStore = useAuthStore();
+    if (authStore.accessToken) {
+      config.headers.Authorization = `Bearer ${authStore.accessToken}`;
+    }
   }
   return config;
 });
@@ -19,8 +30,9 @@ api.interceptors.request.use((config) => {
 const prefixStaticUrls = (obj: any, domain: string): any => {
   if (!obj) return obj;
   if (typeof obj === 'string') {
-    if (obj.startsWith('/static/')) {
-      return `${domain}${obj}`;
+    if (obj.startsWith('/static/') || obj.startsWith('static/')) {
+      const cleanPath = obj.startsWith('/') ? obj : `/${obj}`;
+      return `${domain}${cleanPath}`;
     }
     return obj;
   }
@@ -37,6 +49,7 @@ const prefixStaticUrls = (obj: any, domain: string): any => {
   return obj;
 };
 
+
 // Response interceptor — xử lý lỗi chung và tự động prefix url static
 api.interceptors.response.use(
   (response) => {
@@ -46,12 +59,22 @@ api.interceptors.response.use(
   },
   async (error) => {
     if (error.response?.status === 401) {
-      const authStore = useAuthStore();
-      authStore.logout();
-      router.push('/login');
+      const url = error.config?.url || '';
+      const isAdminRequest = url.startsWith('/admin/') || url.startsWith('/auth/admin/');
+      
+      if (isAdminRequest) {
+        const adminAuthStore = useAdminAuthStore();
+        adminAuthStore.logout();
+        router.push('/admin/login');
+      } else {
+        const authStore = useAuthStore();
+        authStore.logout();
+        router.push('/login');
+      }
     }
     return Promise.reject(error);
   }
 );
 
 export default api;
+
