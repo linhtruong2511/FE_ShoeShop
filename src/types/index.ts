@@ -1,15 +1,15 @@
 export interface ProductImage {
-  image_id: number | string;
-  color_id: number | string;
+  image_id: number;
+  color_id: number;
   image_url: string;
   is_main: boolean;
   display_order: number;
 }
 
 export interface ProductSku {
-  sku_id: number | string;
+  sku_id: number;
   sku_code: string;
-  color_id: number | string;
+  color_id: number;
   size: string;
   stock_quantity: number;
   sold_quantity: number;
@@ -17,8 +17,8 @@ export interface ProductSku {
 }
 
 export interface ProductColor {
-  color_id: number | string;
-  product_id: number | string;
+  color_id: number;
+  product_id: number;
   color_code: string;
   color_name: string;
   hex_code?: string;
@@ -33,13 +33,13 @@ export interface ProductColor {
 }
 
 export interface Product {
-  product_id: number | string;
+  product_id: number;
   product_code: string;
   product_name: string;
   brand_name: string;
-  brand?: { brand_id: number | string; brand_name: string };
+  brand?: { brand_id: number; brand_name: string };
   category_name: string;
-  category?: { category_id: number | string; category_name: string };
+  category?: { category_id: number; category_name: string };
   description: string;
   gender_target: 'men' | 'women' | 'unisex' | 'kids';
   status: 'active' | 'hidden' | 'discontinued';
@@ -187,3 +187,43 @@ export interface StockLog {
   created_at: string;
 }
 
+export interface AdminUser {
+  user_id: number;
+  username: string;
+  email: string;
+  full_name: string;
+  phone?: string;
+  role: 'admin' | 'staff';
+  status: 'active' | 'locked';
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface AdminUserCreate {
+  username: string;
+  email: string;
+  password: string;
+  full_name: string;
+  phone?: string;
+  role: 'admin' | 'staff';
+  status: 'active' | 'locked';
+}
+
+export interface CustomerStats {
+  total_orders: number;
+  total_spent: number;
+}
+
+export interface AdminCustomer {
+  customer_id: number;
+  full_name: string;
+  email: string;
+  phone?: string;
+  gender?: string;
+  date_of_birth?: string;
+  default_address?: string;
+  status: 'active' | 'locked';
+  created_at: string;
+  updated_at?: string;
+  stats?: CustomerStats;
+}

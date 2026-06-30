@@ -1,25 +1,39 @@
 <script setup lang="ts">
 import { useRouter, useRoute } from 'vue-router';
+import { useAuthStore } from '@/stores/auth';
 
 const router = useRouter();
 const route = useRoute();
+const authStore = useAuthStore();
 
-const menuItems = [
-  { name: 'Dashboard', path: '/admin/dashboard', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2v-4zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2v-4z' },
-  { name: 'Sản phẩm', path: '/admin/products', icon: 'M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z' },
-  { name: 'Đơn hàng', path: '/admin/orders', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-  { name: 'Khuyến mãi (Voucher)', path: '/admin/vouchers', icon: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z' }
+const adminMenus = [
+  { name: 'Dashboard', path: '/admin', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
+  { name: 'Đơn hàng', path: '/admin/orders', icon: 'M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z' },
+  { name: 'Sản phẩm', path: '/admin/products', icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4' },
+  { name: 'Danh mục', path: '/admin/categories', icon: 'M4 6h16M4 10h16M4 14h16M4 18h16' },
+  { name: 'Thương hiệu', path: '/admin/brands', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
+  { name: 'Khuyến mãi', path: '/admin/vouchers', icon: 'M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z' },
+  { name: 'Người dùng', path: '/admin/users', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
+  { name: 'Nhật ký (Audit)', path: '/admin/audit-logs', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' }
 ];
 
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
+import { ref } from 'vue';
+
+const showLogoutConfirm = ref(false);
+
 const logoutAdmin = () => {
-  if (confirm('Bạn muốn đăng xuất khỏi trang Quản trị nội bộ?')) {
-    router.push('/');
-  }
+  showLogoutConfirm.value = true;
+};
+
+const handleLogout = () => {
+  showLogoutConfirm.value = false;
+  router.push('/');
 };
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-100 flex">
+  <div class="min-h-screen bg-slate-100 flex admin-layout">
     <!-- Sidebar -->
     <aside class="w-64 bg-slate-950 text-white flex flex-col justify-between flex-shrink-0 shadow-2xl">
       <div>
@@ -33,12 +47,12 @@ const logoutAdmin = () => {
           <span class="text-lg font-black tracking-widest font-sans uppercase">AdminPortal</span>
         </div>
 
-        <!-- Navigation Menu -->
         <nav class="mt-6 px-4 space-y-1">
           <router-link 
-            v-for="item in menuItems" 
+            v-for="item in adminMenus" 
             :key="item.name" 
             :to="item.path"
+            v-show="(item.name !== 'Người dùng' && item.name !== 'Nhật ký (Audit)') || authStore.isAdmin"
             class="flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all uppercase tracking-wider"
             :class="route.path === item.path ? 'bg-brand-accent text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900 hover:text-white'"
           >
@@ -97,5 +111,15 @@ const logoutAdmin = () => {
         <router-view />
       </div>
     </main>
+
+    <ConfirmDialog 
+      :show="showLogoutConfirm" 
+      title="Xác nhận đăng xuất" 
+      message="Bạn muốn đăng xuất khỏi trang Quản trị nội bộ?" 
+      confirm-text="Đăng xuất"
+      type="danger"
+      @confirm="handleLogout" 
+      @cancel="showLogoutConfirm = false" 
+    />
   </div>
 </template>

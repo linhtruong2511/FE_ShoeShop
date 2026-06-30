@@ -53,12 +53,17 @@ const routes: RouteRecordRaw[] = [
     ]
   },
   {
+    path: '/admin/login',
+    name: 'AdminLogin',
+    component: () => import('../views/admin/AdminLoginView.vue'),
+  },
+  {
     path: '/admin',
     component: () => import('../components/layout/AdminLayout.vue'),
-    redirect: '/admin/dashboard',
+    redirect: '/admin/',
     children: [
       {
-        path: 'dashboard',
+        path: '',
         name: 'AdminDashboard',
         component: () => import('../views/admin/AdminDashboardView.vue'),
         meta: { requiresStaffAuth: true }
@@ -79,6 +84,30 @@ const routes: RouteRecordRaw[] = [
         path: 'vouchers',
         name: 'AdminVouchers',
         component: () => import('../views/admin/AdminVoucherListView.vue'),
+        meta: { requiresStaffAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'users',
+        name: 'AdminUsers',
+        component: () => import('../views/admin/AdminUserListView.vue'),
+        meta: { requiresStaffAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'categories',
+        name: 'AdminCategories',
+        component: () => import('../views/admin/AdminCategoryListView.vue'),
+        meta: { requiresStaffAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'brands',
+        name: 'AdminBrands',
+        component: () => import('../views/admin/AdminBrandListView.vue'),
+        meta: { requiresStaffAuth: true, requiresAdmin: true }
+      },
+      {
+        path: 'audit-logs',
+        name: 'AdminAuditLogs',
+        component: () => import('../views/admin/AdminAuditLogView.vue'),
         meta: { requiresStaffAuth: true, requiresAdmin: true }
       }
     ]
@@ -107,7 +136,7 @@ router.beforeEach((to, _from, next) => {
 
   // Check admin/staff auth
   if (to.matched.some(record => record.meta.requiresStaffAuth) && !authStore.isStaff) {
-    return next({ path: '/login' }); // or separate admin login if needed
+    return next({ path: '/admin/login' });
   }
 
   if (to.matched.some(record => record.meta.requiresAdmin) && !authStore.isAdmin) {

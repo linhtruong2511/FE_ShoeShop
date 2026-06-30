@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { mockVouchers } from '../../mocks/products';
+import { adminVoucherService } from '../../services/admin/voucher.service';
 import type { Voucher } from '../../types';
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue';
+import BaseModal from '@/components/common/BaseModal.vue';
 
 const vouchers = ref<Voucher[]>([]);
 const showAddModal = ref(false);
+const isLoading = ref(true);
 
 // Add voucher form inputs
 const newCode = ref('');
@@ -21,78 +24,111 @@ onMounted(() => {
   loadVouchers();
 });
 
-const loadVouchers = () => {
-  const saved = localStorage.getItem('myshoes_vouchers_data');
-  if (saved) {
-    try {
-      vouchers.value = JSON.parse(saved);
-    } catch (e) {
-      vouchers.value = mockVouchers;
+const loadVouchers = async () => {
+  try {
+    isLoading.value = true;
+    const res = await adminVoucherService.getVouchers();
+    if (res.success && res.data) {
+      // Map API voucher response to local UI model
+      vouchers.value = res.data.map((item: any) => ({
+        voucher_id: item.voucher_id,
+        code: item.voucher_code,
+        voucher_type: item.discount_type,
+        discount_value: item.discount_value,
+        min_order_amount: item.min_order_amount,
+        max_discount_amount: item.max_discount,
+        usage_limit: item.usage_limit,
+        used_count: item.used_count || 0,
+        max_usage_per_customer: item.max_usage_per_customer || 1,
+        start_date: item.start_date,
+        end_date: item.end_date,
+        status: item.status
+      }));
     }
-  } else {
-    vouchers.value = mockVouchers;
-    saveToStorage();
+  } catch (e) {
+    console.error('Failed to load vouchers:', e);
+  } finally {
+    isLoading.value = false;
   }
-};
-
-const saveToStorage = () => {
-  localStorage.setItem('myshoes_vouchers_data', JSON.stringify(vouchers.value));
 };
 
 const formatPrice = (value: number) => {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
 };
 
-const getTypeName = (type: Voucher['voucher_type']) => {
+const getTypeName = (type: string) => {
   switch (type) {
     case 'percent': return 'Giảm theo %';
     case 'fixed': return 'Giảm số tiền';
     case 'free_shipping': return 'Miễn ship';
+    default: return type;
   }
 };
 
-const handleAddVoucher = () => {
+const handleAddVoucher = async () => {
   if (!newCode.value) {
     alert('Vui lòng điền mã Voucher!');
     return;
   }
   
-  if (vouchers.value.some(v => v.code.toUpperCase() === newCode.value.toUpperCase())) {
-    alert('Mã giảm giá đã tồn tại!');
-    return;
+  try {
+    const data = {
+      voucher_code: newCode.value.toUpperCase().trim(),
+      voucher_name: `Campaign ${newCode.value.toUpperCase().trim()}`,
+      discount_type: newType.value,
+      discount_value: newValue.value,
+      min_order_amount: newMinOrder.value,
+      max_discount: newMaxDiscount.value || null,
+      usage_limit: newLimit.value || null,
+      max_usage_per_customer: newMaxPerCustomer.value,
+      start_date: new Date(newStartDate.value).toISOString(),
+      end_date: new Date(newEndDate.value).toISOString(),
+      status: 'active'
+    };
+
+    const res = await adminVoucherService.createVoucher(data);
+    if (res.success) {
+      alert('Đã thêm voucher khuyến mãi thành công.');
+      newCode.value = '';
+      showAddModal.value = false;
+      loadVouchers();
+    } else {
+      alert(res.message || 'Thêm voucher thất bại.');
+    }
+  } catch (err: any) {
+    alert(err.response?.data?.detail || err.message || 'Lỗi hệ thống');
   }
-
-  const v: Voucher = {
-    voucher_id: 'v-' + Date.now(),
-    code: newCode.value.toUpperCase().trim(),
-    voucher_type: newType.value,
-    discount_value: newValue.value,
-    min_order_amount: newMinOrder.value,
-    max_discount_amount: newMaxDiscount.value,
-    usage_limit: newLimit.value,
-    used_count: 0,
-    max_usage_per_customer: newMaxPerCustomer.value,
-    start_date: new Date(newStartDate.value).toISOString(),
-    end_date: new Date(newEndDate.value).toISOString(),
-    status: 'active'
-  };
-
-  vouchers.value.push(v);
-  saveToStorage();
-  
-  // reset
-  newCode.value = '';
-  showAddModal.value = false;
-  alert('Đã thêm voucher khuyến mãi thành công.');
 };
 
-const toggleVoucherStatus = (vId: any) => {
-  const idx = vouchers.value.findIndex(v => String(v.voucher_id) === String(vId));
-  if (idx === -1) return;
+const confirmState = ref({
+  show: false,
+  title: 'Xác nhận',
+  message: '',
+  onConfirm: () => {}
+});
+
+const toggleVoucherStatus = async (vId: number, currentStatus: string) => {
+  const nextStatus = currentStatus === 'active' ? 'paused' : 'active';
+  const actionName = currentStatus === 'active' ? 'tạm dừng' : 'kích hoạt';
   
-  const v = vouchers.value[idx];
-  v.status = v.status === 'active' ? 'paused' : 'active';
-  saveToStorage();
+  confirmState.value = {
+    show: true,
+    title: 'Xác nhận trạng thái',
+    message: `Bạn có chắc chắn muốn ${actionName} voucher này?`,
+    onConfirm: async () => {
+      confirmState.value.show = false;
+      try {
+        const res = await adminVoucherService.updateStatus(vId, nextStatus);
+        if (res.success) {
+          loadVouchers();
+        } else {
+          alert('Không thể cập nhật trạng thái');
+        }
+      } catch (err: any) {
+        alert(err.response?.data?.detail || err.message || 'Lỗi cập nhật');
+      }
+    }
+  };
 };
 </script>
 
@@ -112,8 +148,13 @@ const toggleVoucherStatus = (vId: any) => {
       </button>
     </div>
 
+    <!-- Loading State -->
+    <div v-if="isLoading" class="py-12 flex justify-center items-center">
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+    </div>
+
     <!-- Vouchers table list -->
-    <div class="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-premium">
+    <div v-else class="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-premium">
       <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-slate-100 text-xs text-left">
           <thead>
@@ -160,7 +201,7 @@ const toggleVoucherStatus = (vId: any) => {
               <td class="py-4 px-6">
                 <div class="flex justify-center">
                   <button 
-                    @click="toggleVoucherStatus(v.voucher_id)"
+                    @click="toggleVoucherStatus(v.voucher_id as number, v.status)"
                     class="border font-bold text-[10px] px-3 py-1.5 rounded-lg transition-all"
                     :class="v.status === 'active' ? 'border-rose-200 text-rose-600 hover:bg-rose-50' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'"
                   >
@@ -169,16 +210,16 @@ const toggleVoucherStatus = (vId: any) => {
                 </div>
               </td>
             </tr>
+            <tr v-if="vouchers.length === 0">
+              <td colspan="8" class="text-center py-8 text-slate-400">Không tìm thấy voucher khuyến mãi nào.</td>
+            </tr>
           </tbody>
         </table>
       </div>
     </div>
 
     <!-- Add Voucher Modal -->
-    <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center overflow-hidden">
-      <div class="absolute inset-0 bg-slate-900 bg-opacity-60 backdrop-blur-sm" @click="showAddModal = false"></div>
-      <div class="bg-white rounded-3xl max-w-md w-full p-6 z-10 shadow-2xl space-y-4">
-        <h3 class="text-base font-bold text-slate-950 font-sans uppercase">Tạo mã giảm giá mới</h3>
+    <BaseModal :show="showAddModal" title="Tạo mã giảm giá mới" size="md" @close="showAddModal = false">
         <div class="space-y-3">
           <div class="grid grid-cols-2 gap-3">
             <div>
@@ -229,11 +270,18 @@ const toggleVoucherStatus = (vId: any) => {
           </div>
         </div>
         
-        <div class="flex space-x-3.5 pt-2">
+        <div class="flex space-x-3.5 pt-4">
           <button @click="showAddModal = false" class="flex-1 border text-slate-600 font-bold text-xs py-2.5 rounded-xl">Đóng</button>
           <button @click="handleAddVoucher" class="flex-1 bg-slate-900 text-white font-bold text-xs py-2.5 rounded-xl">Tạo Voucher</button>
         </div>
-      </div>
-    </div>
+    </BaseModal>
+    
+    <ConfirmDialog 
+      :show="confirmState.show" 
+      :title="confirmState.title" 
+      :message="confirmState.message" 
+      @confirm="confirmState.onConfirm" 
+      @cancel="confirmState.show = false" 
+    />
   </div>
 </template>

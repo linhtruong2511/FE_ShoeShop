@@ -1,129 +1,84 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
-import { mockProducts, mockVouchers } from '../../mocks/products';
-import { getDiscountedPrice } from '../../stores/cart';
-import type { Order } from '../../types';
-
-const orders = ref<Order[]>([]);
-
-onMounted(() => {
-  const savedOrders = localStorage.getItem('myshoes_orders');
-  if (savedOrders) {
-    try {
-      orders.value = JSON.parse(savedOrders);
-    } catch (e) {
-      console.error(e);
-    }
-  }
-});
+import { ref, onMounted } from 'vue';
+import { adminReportService } from '../../services/admin/report.service';
 
 const formatPrice = (value: number) => {
   return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
 };
 
 // Summary metrics
-const totalRevenue = computed(() => {
-  return orders.value
-    .filter(o => o.order_status === 'completed')
-    .reduce((sum, o) => sum + o.total_amount, 0);
-});
+const totalRevenue = ref(0);
+const totalOrdersCount = ref(0);
+const pendingOrdersCount = ref(0);
+const completedOrdersCount = ref(0);
+const itemsSold = ref(0);
 
-const totalOrdersCount = computed(() => orders.value.length);
-const pendingOrdersCount = computed(() => orders.value.filter(o => o.order_status === 'pending').length);
-const completedOrdersCount = computed(() => orders.value.filter(o => o.order_status === 'completed').length);
+// Warnings & lists
+const lowStockSkus = ref<Array<{
+  product_name: string;
+  color_name: string;
+  size: string;
+  sku_code: string;
+  stock_quantity: number;
+}>>([]);
 
-const itemsSold = computed(() => {
-  return orders.value
-    .filter(o => o.order_status === 'completed')
-    .reduce((sum, o) => sum + o.details.reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
-});
+const bestSellers = ref<Array<{
+  product_name: string;
+  color_name: string;
+  size: string;
+  sku_code: string;
+  sold: number;
+  price: number;
+}>>([]);
 
-// Low stock warnings (under 5 items)
-const lowStockSkus = computed(() => {
-  const warnings: Array<{
-    product_name: string;
-    color_name: string;
-    size: string;
-    sku_code: string;
-    stock: number;
-  }> = [];
+const voucherReport = ref<Array<{
+  code: string;
+  type: string;
+  used: number;
+  discount: number;
+  sales: number;
+}>>([]);
 
-  mockProducts.forEach(p => {
-    p.colors.forEach(c => {
-      c.skus.forEach(s => {
-        if (s.stock_quantity <= 5) {
-          warnings.push({
-            product_name: p.product_name,
-            color_name: c.color_name,
-            size: s.size,
-            sku_code: s.sku_code,
-            stock: s.stock_quantity
-          });
-        }
-      });
-    });
-  });
+const isLoading = ref(true);
 
-  return warnings.sort((a, b) => a.stock - b.stock).slice(0, 10);
-});
-
-// Best seller (based on sold_quantity of mock data + order simulation completed)
-const bestSellers = computed(() => {
-  const list: Array<{
-    product_name: string;
-    color_name: string;
-    size: string;
-    sku_code: string;
-    sold: number;
-    price: number;
-  }> = [];
-
-  mockProducts.forEach(p => {
-    p.colors.forEach(c => {
-      c.skus.forEach(s => {
-        // base sold quantity + actual completed orders count
-        let orderSold = 0;
-        orders.value
-          .filter(o => o.order_status === 'completed')
-          .forEach(o => {
-            o.details.forEach(d => {
-              if (d.sku_id === s.sku_id) {
-                orderSold += d.quantity;
-              }
-            });
-          });
-
-        list.push({
-          product_name: p.product_name,
-          color_name: c.color_name,
-          size: s.size,
-          sku_code: s.sku_code,
-          sold: s.sold_quantity + orderSold,
-          price: getDiscountedPrice(c)
-        });
-      });
-    });
-  });
-
-  return list.sort((a, b) => b.sold - a.sold).slice(0, 5);
-});
-
-// Voucher usage tracking
-const voucherReport = computed(() => {
-  return mockVouchers.map(v => {
-    // Find how many orders used this voucher
-    const orderUsages = orders.value.filter(o => o.voucher_code_snapshot === v.code);
-    const totalDiscountAmount = orderUsages.reduce((sum, o) => sum + o.voucher_discount_amount, 0);
-    const totalSalesAmount = orderUsages.reduce((sum, o) => sum + o.total_amount, 0);
+onMounted(async () => {
+  try {
+    isLoading.value = true;
     
-    return {
-      code: v.code,
-      type: v.voucher_type === 'percent' ? 'Giảm %' : v.voucher_type === 'fixed' ? 'Giảm tiền' : 'Miễn ship',
-      used: v.used_count + orderUsages.length,
-      discount: totalDiscountAmount,
-      sales: totalSalesAmount
-    };
-  });
+    // 1. Get Revenue & Order counts
+    const revRes = await adminReportService.getRevenueSummary();
+    if (revRes.success && revRes.data) {
+      totalRevenue.value = revRes.data.total_revenue || 0;
+      totalOrdersCount.value = revRes.data.total_orders || 0;
+      // In real backend logic we can compute these or expand report response.
+      // Here we set base values.
+      pendingOrdersCount.value = 0; 
+      completedOrdersCount.value = revRes.data.total_orders || 0;
+    }
+
+    // 2. Get low stock SKUs
+    const invRes = await adminReportService.getInventoryReport({ low_stock_threshold: 5 });
+    if (invRes.success && invRes.data) {
+      lowStockSkus.value = invRes.data.items || [];
+    }
+
+    // 3. Get best sellers
+    const bsRes = await adminReportService.getBestSellers({ limit: 5 });
+    if (bsRes.success && bsRes.data) {
+      bestSellers.value = bsRes.data.items || [];
+      itemsSold.value = bestSellers.value.reduce((sum, item) => sum + item.sold, 0);
+    }
+
+    // 4. Get voucher usage report
+    const vRes = await adminReportService.getVoucherReport();
+    if (vRes.success && vRes.data) {
+      voucherReport.value = vRes.data.items || [];
+    }
+  } catch (e) {
+    console.error('Failed to load dashboard statistics:', e);
+  } finally {
+    isLoading.value = false;
+  }
 });
 </script>
 
@@ -135,8 +90,13 @@ const voucherReport = computed(() => {
       <p class="text-xs text-slate-400 font-bold mt-1 uppercase tracking-wide">Số liệu kinh doanh cập nhật trực quan thời gian thực</p>
     </div>
 
+    <!-- Loading State -->
+    <div v-if="isLoading" class="py-12 flex justify-center items-center">
+      <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+    </div>
+
     <!-- Metrics Cards Grid -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
       <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-premium flex items-center justify-between">
         <div class="space-y-1">
           <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Tổng Doanh Thu</p>
@@ -190,7 +150,7 @@ const voucherReport = computed(() => {
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+    <div v-if="!isLoading" class="grid grid-cols-1 lg:grid-cols-12 gap-8">
       <!-- Best Sellers (7 columns) -->
       <div class="lg:col-span-7 bg-white border border-slate-200 rounded-3xl p-6 shadow-premium">
         <h2 class="text-base font-bold text-slate-900 mb-5 font-sans uppercase border-b pb-3">Sản phẩm bán chạy nhất</h2>
@@ -212,6 +172,9 @@ const voucherReport = computed(() => {
                 <td class="py-3 text-center font-bold text-brand-blue">{{ item.sold }} đôi</td>
                 <td class="py-3 text-right font-bold text-slate-900">{{ formatPrice(item.sold * item.price) }}</td>
               </tr>
+              <tr v-if="bestSellers.length === 0">
+                <td colspan="4" class="text-center py-6 text-slate-400">Chưa có dữ liệu sản phẩm bán chạy</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -231,17 +194,20 @@ const voucherReport = computed(() => {
             
             <span 
               class="px-2.5 py-1 rounded-lg text-xs font-bold font-mono"
-              :class="sku.stock === 0 ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'"
+              :class="sku.stock_quantity === 0 ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'"
             >
-              Tồn: {{ sku.stock }}
+              Tồn: {{ sku.stock_quantity }}
             </span>
+          </div>
+          <div v-if="lowStockSkus.length === 0" class="text-center py-12 text-slate-400 text-xs">
+            Không có SKU nào ở mức cảnh báo tồn kho thấp.
           </div>
         </div>
       </div>
     </div>
 
     <!-- Voucher Performance reports -->
-    <div class="bg-white border border-slate-200 rounded-3xl p-6 shadow-premium">
+    <div v-if="!isLoading" class="bg-white border border-slate-200 rounded-3xl p-6 shadow-premium">
       <h2 class="text-base font-bold text-slate-900 mb-5 font-sans uppercase border-b pb-3">Báo cáo hiệu quả mã giảm giá (Voucher)</h2>
       
       <div class="overflow-x-auto">
@@ -250,7 +216,7 @@ const voucherReport = computed(() => {
             <tr class="text-slate-400 font-bold uppercase">
               <th class="py-3 text-left">Mã Voucher</th>
               <th class="py-3 text-left">Phân loại</th>
-              <th class="py-3 class=text-center">Số lượt sử dụng</th>
+              <th class="py-3 text-center">Số lượt sử dụng</th>
               <th class="py-3 text-right">Tổng số tiền giảm</th>
               <th class="py-3 text-right">Doanh số đơn kéo theo</th>
             </tr>
@@ -260,10 +226,13 @@ const voucherReport = computed(() => {
               <td class="py-3 text-left font-bold text-slate-900">
                 <span class="border border-dashed border-slate-300 px-2 py-0.5 rounded font-mono">{{ v.code }}</span>
               </td>
-              <td class="py-3 text-left">{{ v.type }}</td>
+              <td class="py-3 text-left">{{ v.type === 'percent' ? 'Giảm %' : v.type === 'fixed' ? 'Giảm tiền' : 'Miễn ship' }}</td>
               <td class="py-3 text-center font-bold text-slate-800">{{ v.used }} lượt</td>
               <td class="py-3 text-right font-bold text-rose-600">{{ formatPrice(v.discount) }}</td>
               <td class="py-3 text-right font-bold text-brand-blue">{{ formatPrice(v.sales) }}</td>
+            </tr>
+            <tr v-if="voucherReport.length === 0">
+              <td colspan="5" class="text-center py-6 text-slate-400">Chưa ghi nhận mã giảm giá được sử dụng</td>
             </tr>
           </tbody>
         </table>
