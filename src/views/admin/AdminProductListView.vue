@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { adminProductService } from '../../services/admin/product.service';
-import { brandService } from '../../services/brand.service';
-import { categoryService } from '../../services/category.service';
+import { adminBrandService } from '../../services/admin/brand.service';
+import { adminCategoryService } from '../../services/admin/category.service';
 import type { Product, ProductColor, ProductSku, StockLog } from '../../types';
 import Pagination from '@/components/common/Pagination.vue';
 import BaseModal from '@/components/common/BaseModal.vue';
@@ -161,8 +161,8 @@ const activeSkuLogs = ref<StockLog[]>([]);
 // Adjust stock state
 const showAdjustStockModal = ref(false);
 const activeSkuForAdjust = ref<ProductSku | null>(null);
-const adjustQuantity = ref(5);
-const adjustReason = ref<'import' | 'adjustment'>('import');
+const adjustQuantity = ref(0);
+const adjustReason = ref<'import' | 'export'>('import');
 const adjustNote = ref('');
 
 const isLoading = ref(true);
@@ -174,10 +174,10 @@ onMounted(() => {
 
 const loadMetadata = async () => {
   try {
-    const brandRes = await brandService.getBrands();
+    const brandRes = await adminBrandService.getBrands();
     if (brandRes.success) brands.value = brandRes.data;
     
-    const catRes = await categoryService.getCategories();
+    const catRes = await adminCategoryService.getCategories();
     if (catRes.success) categories.value = catRes.data;
   } catch (e) {
     console.error('Failed to load filters metadata:', e);
@@ -534,35 +534,64 @@ const handleAddSku = async () => {
   }
 };
 
-// Adjust stock quantity
+// Adjust stock quantity (Import / Export)
 const handleAdjustStock = async () => {
   if (!activeSkuForAdjust.value) return;
+  
+  const productId = selectedColor.value?.product_id;
+  const colorId = selectedColor.value?.color_id;
+  const skuId = activeSkuForAdjust.value.sku_id;
+  
+  if (!productId || !colorId || !skuId) {
+    alert('Không xác định được thông tin sản phẩm hoặc màu sắc!');
+    return;
+  }
   
   try {
     const originalStock = activeSkuForAdjust.value.stock_quantity;
     const isImport = adjustReason.value === 'import';
-    const quantityChange = isImport ? adjustQuantity.value : -adjustQuantity.value;
     
     if (!isImport && originalStock < adjustQuantity.value) {
-      alert('Số lượng điều chỉnh giảm không thể lớn hơn tồn kho hiện tại!');
+      alert('Số lượng xuất kho không thể lớn hơn tồn kho hiện tại!');
       return;
     }
 
     const data = {
-      change_quantity: quantityChange,
-      reason: adjustReason.value,
-      reason_note: adjustNote.value || (isImport ? 'Nhập hàng thêm thủ công' : 'Điều chỉnh sau kiểm kho')
+      stock_quantity: adjustQuantity.value,
+      reason: adjustNote.value || (isImport ? 'Nhập kho thủ công' : 'Xuất kho / Điều chỉnh kho')
     };
 
-    const res = await adminProductService.adjustStock(activeSkuForAdjust.value.sku_id as number, data);
+    let res;
+    if (isImport) {
+      res = await adminProductService.importProductSku(productId, colorId, skuId, data);
+    } else {
+      res = await adminProductService.exportProductSku(productId, colorId, skuId, data);
+    }
+
     if (res.success) {
-      alert('Cập nhật tồn kho và ghi log thành công.');
+      alert('Cập nhật tồn kho thành công.');
       showAdjustStockModal.value = false;
       adjustNote.value = '';
+      adjustQuantity.value = 0;
+      
+      // Refresh current selected color SKUs list to reflect new quantities immediately
+      if (selectedColor.value) {
+        const prodRes = await adminProductService.getProducts();
+        if (prodRes.success && prodRes.data) {
+          const currentProd = prodRes.data.find((p: any) => p.product_id === productId);
+          if (currentProd) {
+            const currentColor = currentProd.colors.find((c: any) => c.color_id === colorId);
+            if (currentColor) {
+              selectedColor.value = currentColor;
+            }
+          }
+        }
+      }
+      
       loadProducts();
     }
   } catch (err: any) {
-    alert(err.response?.data?.detail || err.message || 'Lỗi điều chỉnh tồn kho');
+    alert(err.response?.data?.detail || err.message || 'Lỗi cập nhật tồn kho');
   }
 };
 
@@ -1061,7 +1090,7 @@ const openAdjustModal = (sku: ProductSku) => {
               <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Hành động</label>
               <select v-model="adjustReason" class="w-full border rounded-xl px-3 py-2 text-xs bg-white">
                 <option value="import">Nhập thêm hàng (+)</option>
-                <option value="adjustment">Điều chỉnh kho / Xuất (-)</option>
+                <option value="export">Xuất kho / Điều chỉnh (-)</option>
               </select>
             </div>
             <div>

@@ -80,5 +80,13 @@ export const adminProductService = {
   async getStockLogs(skuId: number) {
     const response = await api.get(`/admin/skus/${skuId}/stock-logs`);
     return response.data;
+  },
+  async importProductSku(productId: number, colorId: number, skuId: number, data: { stock_quantity: number; reason: string }) {
+    const response = await api.patch(`/admin/products/${productId}/colors/${colorId}/skus/${skuId}/import`, data);
+    return response.data;
+  },
+  async exportProductSku(productId: number, colorId: number, skuId: number, data: { stock_quantity: number; reason: string }) {
+    const response = await api.patch(`/admin/products/${productId}/colors/${colorId}/skus/${skuId}/export`, data);
+    return response.data;
   }
 };

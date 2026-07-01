@@ -2,7 +2,7 @@ import api from '../api';
 
 export const adminCategoryService = {
   async getCategories(params?: any) {
-    const res = await api.get('/categories', { params });
+    const res = await api.get('/admin/categories', { params });
     return res.data;
   },
   async createCategory(data: any) {

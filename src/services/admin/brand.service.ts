@@ -2,7 +2,7 @@ import api from '../api';
 
 export const adminBrandService = {
   async getBrands(params?: any) {
-    const res = await api.get('/brands', { params });
+    const res = await api.get('/admin/brands', { params });
     return res.data;
   },
   async createBrand(data: any) {

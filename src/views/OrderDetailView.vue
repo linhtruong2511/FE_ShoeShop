@@ -82,6 +82,28 @@ const getStatusName = (status: Order['order_status']) => {
   }
 };
 
+const getStatusIcon = (status: string) => {
+  switch (status) {
+    case 'pending':
+      return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
+    case 'confirmed':
+      return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" /></svg>`;
+    case 'preparing':
+    case 'processing':
+      return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" /></svg>`;
+    case 'shipping':
+      return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125a1.125 1.125 0 0 0 1.125-1.125V9.75M3.75 14.25h14.25m0 0V9.75m0 0h-1.35c-.932 0-1.75-.627-1.937-1.54L13.89 4.39A1.75 1.75 0 0 0 12.19 3H8.25m0 0a1.5 1.5 0 0 0-3 0m3 0h-3.75V14.25" /></svg>`;
+    case 'completed':
+      return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
+    case 'cancelled':
+      return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>`;
+    case 'returned':
+      return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" /></svg>`;
+    default:
+      return `<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" /></svg>`;
+  }
+};
+
 const getStatusBadgeClass = (status: Order['order_status']) => {
   switch (status) {
     case 'pending':
@@ -302,18 +324,18 @@ const submitReturnRequest = async () => {
       
       <div class="flow-root">
         <ul role="list" class="-mb-8">
-          <li v-for="(log, logIdx) in order.status_history" :key="log.status_log_id">
+          <li v-for="(log, logIdx) in order.status_logs" :key="log.status_log_id">
             <div class="relative pb-8">
               <!-- Connector line -->
-              <span v-if="logIdx !== order.status_history.length - 1" class="absolute top-4 left-4 -ml-px h-full w-0.5 bg-slate-200" aria-hidden="true"></span>
+              <span v-if="logIdx !== order.status_logs.length - 1" class="absolute top-4 left-4 -ml-px h-full w-0.5 bg-slate-200" aria-hidden="true"></span>
               
               <div class="relative flex space-x-3 items-start">
                 <!-- Checkpoint Dot -->
                 <div>
-                  <span class="h-8 w-8 rounded-full bg-slate-900 text-white flex items-center justify-center ring-8 ring-white">
-                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" />
-                    </svg>
+                  <span 
+                    class="h-8 w-8 rounded-full bg-slate-900 text-white flex items-center justify-center ring-8 ring-white"
+                    v-html="getStatusIcon(log.new_status)"
+                  >
                   </span>
                 </div>
                 
@@ -321,7 +343,6 @@ const submitReturnRequest = async () => {
                 <div class="min-w-0 flex-1 pt-1.5 flex justify-between space-x-4">
                   <div>
                     <p class="text-sm font-bold text-slate-900">{{ getStatusName(log.new_status as Order['order_status']) }}</p>
-                    <p class="text-xs text-slate-500 mt-1" v-if="log.note">{{ log.note }}</p>
                   </div>
                   <div class="text-right text-xs whitespace-nowrap text-slate-400 font-bold">
                     <time>{{ formatDate(log.changed_at) }}</time>
