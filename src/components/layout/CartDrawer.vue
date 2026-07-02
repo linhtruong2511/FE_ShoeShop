@@ -131,8 +131,11 @@ const goToCheckout = () => {
                            </button>
                            <span class="px-2 py-0.5 font-medium text-slate-800 text-xs">{{ item.quantity }}</span>
                            <button 
-                             @click="updateQuantity(item.id, item.quantity + 1)" 
-                             class="px-2 py-0.5 text-slate-500 hover:bg-slate-50 font-bold"
+                             @click="item.quantity < item.selectedSku.stock_quantity && updateQuantity(item.id, item.quantity + 1)" 
+                             class="px-2 py-0.5 font-bold transition-colors"
+                             :class="item.quantity >= item.selectedSku.stock_quantity ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:bg-slate-50'"
+                             :disabled="item.quantity >= item.selectedSku.stock_quantity"
+                             :title="item.quantity >= item.selectedSku.stock_quantity ? 'Vượt quá số lượng trong kho' : ''"
                            >
                              +
                            </button>

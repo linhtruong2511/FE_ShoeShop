@@ -410,8 +410,10 @@ const handleBuyNow = async () => {
                 </button>
                 <span class="px-6 py-2.5 font-bold text-slate-800 text-sm bg-white min-w-[50px] text-center">{{ quantity }}</span>
                 <button 
-                  @click="quantity++; errorMessage = ''" 
-                  class="px-4 py-2.5 text-slate-500 hover:bg-slate-50 font-bold"
+                  @click="(!selectedSku || quantity < selectedSku.stock_quantity) ? (quantity++, errorMessage = '') : (errorMessage = 'Số lượng vượt quá số lượng trong kho!')"
+                  class="px-4 py-2.5 font-bold transition-colors"
+                  :class="selectedSku && quantity >= selectedSku.stock_quantity ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:bg-slate-50'"
+                  :disabled="selectedSku && quantity >= selectedSku.stock_quantity"
                 >
                   +
                 </button>
