@@ -30,6 +30,13 @@ const isLoading = ref(false);
 const errorMsg = ref<string | null>(null);
 const relatedProducts = ref<ProductListItem[]>([]);
 
+const filteredColors = computed(() => {
+  if (!product.value || !product.value.colors) return [];
+  return product.value.colors.filter(color => 
+    color.skus && color.skus.length > 0 && color.skus.some(sku => sku.stock_quantity > 0)
+  );
+});
+
 const resetSelection = () => {
   activeImageIndex.value = 0;
   selectedSku.value = null;
@@ -37,8 +44,8 @@ const resetSelection = () => {
   showSizeWarning.value = false;
   errorMessage.value = '';
   
-  if (product.value && product.value.colors && product.value.colors.length > 0) {
-    const defaultColor = product.value.colors.find(c => c.is_default) || product.value.colors[0];
+  if (filteredColors.value && filteredColors.value.length > 0) {
+    const defaultColor = filteredColors.value.find(c => c.is_default) || filteredColors.value[0];
     selectedColor.value = defaultColor;
   } else {
     selectedColor.value = null;
@@ -339,7 +346,7 @@ const handleBuyNow = async () => {
             <h3 class="text-sm font-bold text-slate-900 mb-3.5 uppercase tracking-wide">Màu sắc:</h3>
             <div class="flex flex-wrap gap-2.5">
               <button 
-                v-for="color in product.colors" 
+                v-for="color in filteredColors" 
                 :key="color.color_id"
                 @click="selectedColor = color"
                 class="px-4 py-2 border rounded-xl text-xs font-bold transition-all shadow-sm"

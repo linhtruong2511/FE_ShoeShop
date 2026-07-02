@@ -12,6 +12,7 @@ const totalOrdersCount = ref(0);
 const pendingOrdersCount = ref(0);
 const completedOrdersCount = ref(0);
 const itemsSold = ref(0);
+const totalLowStockCount = ref(0);
 
 // Warnings & lists
 const lowStockSkus = ref<Array<{
@@ -54,19 +55,20 @@ onMounted(async () => {
       // Here we set base values.
       pendingOrdersCount.value = 0; 
       completedOrdersCount.value = revRes.data.total_orders || 0;
+      itemsSold.value = revRes.data.total_items_sold || 0;
     }
 
     // 2. Get low stock SKUs
     const invRes = await adminReportService.getInventoryReport({ low_stock_threshold: 5 });
     if (invRes.success && invRes.data) {
       lowStockSkus.value = invRes.data.items || [];
+      totalLowStockCount.value = revRes.data?.total_low_stock !== undefined ? revRes.data.total_low_stock : lowStockSkus.value.length;
     }
 
     // 3. Get best sellers
     const bsRes = await adminReportService.getBestSellers({ limit: 5 });
     if (bsRes.success && bsRes.data) {
       bestSellers.value = bsRes.data.items || [];
-      itemsSold.value = bestSellers.value.reduce((sum, item) => sum + item.sold, 0);
     }
 
     // 4. Get voucher usage report
@@ -114,7 +116,7 @@ onMounted(async () => {
         <div class="space-y-1">
           <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Tổng Số Đơn Hàng</p>
           <p class="text-xl font-black text-slate-900 font-sans">{{ totalOrdersCount }} đơn</p>
-          <span class="text-[10px] text-amber-600 font-bold">{{ pendingOrdersCount }} đơn chờ xác nhận</span>
+          <span class="text-[10px] text-amber-600 font-bold">Đơn hàng đã hoàn thành</span>
         </div>
         <div class="rounded-2xl bg-amber-50 p-3.5 text-amber-600">
           <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -139,7 +141,7 @@ onMounted(async () => {
       <div class="bg-white p-6 rounded-3xl border border-slate-200 shadow-premium flex items-center justify-between">
         <div class="space-y-1">
           <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Cảnh Báo Hết Kho</p>
-          <p class="text-xl font-black text-slate-900 font-sans">{{ lowStockSkus.length }} SKU</p>
+          <p class="text-xl font-black text-slate-900 font-sans">{{ totalLowStockCount }} SKU</p>
           <span class="text-[10px] text-rose-600 font-bold">Tồn kho dưới 5 sản phẩm</span>
         </div>
         <div class="rounded-2xl bg-rose-50 p-3.5 text-rose-600">

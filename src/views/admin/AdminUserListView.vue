@@ -40,6 +40,26 @@ const formStaff = ref<AdminUserCreate>({
   status: 'active'
 });
 
+// Modal Edit Staff
+const showEditStaffModal = ref(false);
+const selectedStaffId = ref<number | null>(null);
+const formEditStaff = ref<Partial<AdminUserCreate>>({
+  full_name: '',
+  phone: '',
+  role: 'staff'
+});
+
+// Modal Edit Customer
+const showEditCustomerModal = ref(false);
+const selectedCustomerId = ref<number | null>(null);
+const formEditCustomer = ref({
+  full_name: '',
+  phone: '',
+  gender: '',
+  date_of_birth: '',
+  default_address: ''
+});
+
 const loadStaff = async () => {
   try {
     staffLoading.value = true;
@@ -93,6 +113,52 @@ const handleCreateStaff = async () => {
     await loadStaff();
   } catch (err: any) {
     alert(err.response?.data?.detail || 'Lỗi khi tạo tài khoản');
+  }
+};
+
+const openEditStaff = (user: AdminUser) => {
+  selectedStaffId.value = user.user_id;
+  formEditStaff.value = {
+    full_name: user.full_name,
+    phone: user.phone || '',
+    role: user.role
+  };
+  showEditStaffModal.value = true;
+};
+
+const handleEditStaff = async () => {
+  if (!selectedStaffId.value) return;
+  try {
+    await adminUserService.updateUser(selectedStaffId.value, formEditStaff.value);
+    showEditStaffModal.value = false;
+    await loadStaff();
+  } catch (err: any) {
+    alert(err.response?.data?.detail || 'Lỗi khi cập nhật tài khoản');
+  }
+};
+
+const openEditCustomer = (customer: AdminCustomer) => {
+  selectedCustomerId.value = customer.customer_id;
+  formEditCustomer.value = {
+    full_name: customer.full_name,
+    phone: customer.phone || '',
+    gender: customer.gender || '',
+    date_of_birth: customer.date_of_birth ? customer.date_of_birth.split('T')[0] : '',
+    default_address: customer.default_address || ''
+  };
+  showEditCustomerModal.value = true;
+};
+
+const handleEditCustomer = async () => {
+  if (!selectedCustomerId.value) return;
+  try {
+    const payload = { ...formEditCustomer.value };
+    if (!payload.date_of_birth) delete payload.date_of_birth;
+    await adminCustomerService.updateCustomer(selectedCustomerId.value, payload);
+    showEditCustomerModal.value = false;
+    await loadCustomers();
+  } catch (err: any) {
+    alert(err.response?.data?.detail || 'Lỗi khi cập nhật khách hàng');
   }
 };
 
@@ -246,7 +312,14 @@ onMounted(() => {
                   {{ user.status === 'active' ? 'Hoạt động' : 'Bị khóa' }}
                 </span>
               </td>
-              <td class="px-6 py-4">
+              <td class="px-6 py-4 flex space-x-2">
+                <button 
+                  v-if="adminAuthStore.isAdmin"
+                  @click="openEditStaff(user)" 
+                  class="text-xs font-bold px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+                >
+                  Sửa
+                </button>
                 <button 
                   v-if="adminAuthStore.isAdmin"
                   @click="confirmToggleStaff(user)" 
@@ -316,7 +389,14 @@ onMounted(() => {
                 </span>
               </td>
               <td class="px-6 py-4 text-slate-500">{{ new Date(c.created_at).toLocaleDateString('vi-VN') }}</td>
-              <td class="px-6 py-4">
+              <td class="px-6 py-4 flex space-x-2">
+                <!-- <button 
+                  v-if="adminAuthStore.isAdmin"
+                  @click="openEditCustomer(c)" 
+                  class="text-xs font-bold px-3 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+                >
+                  Sửa
+                </button> -->
                 <button 
                   v-if="adminAuthStore.isAdmin"
                   @click="confirmToggleCustomer(c)" 
@@ -391,5 +471,77 @@ onMounted(() => {
       @confirm="confirmState.onConfirm" 
       @cancel="confirmState.show = false" 
     />
+
+    <!-- Edit Staff Modal -->
+    <div v-if="showEditStaffModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="text-lg font-black uppercase tracking-tight text-slate-900">Sửa Nhân Viên</h3>
+          <button @click="showEditStaffModal = false" class="text-slate-400 hover:text-slate-600">
+            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <form @submit.prevent="handleEditStaff" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Họ và tên</label>
+            <input v-model="formEditStaff.full_name" required class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-brand-accent focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Số điện thoại</label>
+            <input v-model="formEditStaff.phone" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-brand-accent focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Quyền</label>
+            <select v-model="formEditStaff.role" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-brand-accent focus:outline-none">
+              <option value="staff">Staff (Nhân viên)</option>
+              <option value="admin">Admin (Quản trị viên)</option>
+            </select>
+          </div>
+          <div class="flex space-x-3 pt-4">
+            <button type="button" @click="showEditStaffModal = false" class="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors">Hủy</button>
+            <button type="submit" class="flex-1 py-3 bg-brand-accent text-white font-bold rounded-xl shadow-premium hover:shadow-premium-hover transition-all">Lưu Thay Đổi</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Edit Customer Modal -->
+    <div v-if="showEditCustomerModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="text-lg font-black uppercase tracking-tight text-slate-900">Sửa Khách Hàng</h3>
+          <button @click="showEditCustomerModal = false" class="text-slate-400 hover:text-slate-600">
+            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <form @submit.prevent="handleEditCustomer" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Họ và tên</label>
+            <input v-model="formEditCustomer.full_name" required class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-brand-accent focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Số điện thoại</label>
+            <input v-model="formEditCustomer.phone" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-brand-accent focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Giới tính</label>
+            <select v-model="formEditCustomer.gender" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-brand-accent focus:outline-none">
+              <option value="">Chưa chọn</option>
+              <option value="male">Nam</option>
+              <option value="female">Nữ</option>
+              <option value="other">Khác</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Ngày sinh</label>
+            <input type="date" v-model="formEditCustomer.date_of_birth" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-brand-accent focus:outline-none" />
+          </div>
+          <div class="flex space-x-3 pt-4">
+            <button type="button" @click="showEditCustomerModal = false" class="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors">Hủy</button>
+            <button type="submit" class="flex-1 py-3 bg-brand-accent text-white font-bold rounded-xl shadow-premium hover:shadow-premium-hover transition-all">Lưu Thay Đổi</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>

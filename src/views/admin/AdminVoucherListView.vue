@@ -222,7 +222,7 @@ const updateVoucherStatusDirect = async (vId: number, nextStatus: string) => {
               <input type="number" v-model="newValue" class="w-full border rounded-xl px-3 py-2 text-xs" />
             </div>
             <div>
-              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Giảm tối đa (phần trăm)</label>
+              <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Giảm tối đa</label>
               <input type="number" v-model="newMaxDiscount" placeholder="Ví dụ: 100000" class="w-full border rounded-xl px-3 py-2 text-xs" :disabled="newType !== 'percent'" />
             </div>
           </div>

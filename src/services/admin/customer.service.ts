@@ -21,5 +21,10 @@ export const adminCustomerService = {
   async toggleCustomerStatus(id: number | string, status: 'active' | 'locked') {
     const { data } = await api.patch(`/admin/customers/${id}/status`, { status });
     return data;
+  },
+  
+  async updateCustomer(id: number | string, payload: Record<string, any>) {
+    const { data } = await api.put(`/admin/customers/${id}`, payload);
+    return data;
   }
 };
